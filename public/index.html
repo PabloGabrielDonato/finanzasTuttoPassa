@@ -324,6 +324,7 @@
                             <h3>Registrar Empleado / Socio</h3>
                         </div>
                         <form id="employee-form">
+                            <input type="hidden" id="emp-id">
                             <div class="form-group">
                                 <label for="emp-name">Nombre Completo</label>
                                 <input type="text" id="emp-name" placeholder="Ej: Juan Pérez" required>
@@ -336,7 +337,10 @@
                                 <input type="checkbox" id="emp-partner" style="width: auto;">
                                 <label for="emp-partner" style="margin-bottom: 0; cursor: pointer;">¿Es socio? (Divide balance neto en 3 partes iguales)</label>
                             </div>
-                            <button type="submit" class="btn-primary btn-block" style="margin-top: 1.5rem;">Guardar Empleado</button>
+                            <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1.5rem;">
+                                <button type="submit" class="btn-primary btn-block" id="emp-submit-btn">Guardar Empleado</button>
+                                <button type="button" class="btn-secondary btn-block hide" id="emp-cancel-btn">Cancelar Edición</button>
+                            </div>
                         </form>
                     </div>
 
@@ -665,6 +669,6 @@
     </div>
 
     <!-- App Script -->
-    <script src="js/app.js?v=1.0.6"></script>
+    <script src="js/app.js?v=1.0.7"></script>
 </body>
 </html>

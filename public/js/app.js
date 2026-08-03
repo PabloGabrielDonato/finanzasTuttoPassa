@@ -116,6 +116,7 @@ function initEventListeners() {
 
     // Empleados Formulario
     document.getElementById('employee-form').addEventListener('submit', handleSaveEmployee);
+    document.getElementById('emp-cancel-btn').addEventListener('click', cancelEditEmployee);
 
     // Servicios Formulario
     document.getElementById('service-type-form').addEventListener('submit', handleSaveServiceType);
@@ -986,18 +987,51 @@ function renderEmployeesTable() {
             <td>${formattedSalary}</td>
             <td><span class="badge ${emp.is_partner ? 'badge-income' : 'badge-expense'}">${emp.is_partner ? 'Socio' : 'Empleado'}</span></td>
             <td>
-                <button class="btn-delete" onclick="handleDeleteEmployee(${emp.id})" title="Eliminar empleado">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                </button>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <button class="btn-primary btn-sm" onclick="startEditEmployee(${emp.id})" title="Editar empleado">
+                        Editar
+                    </button>
+                    <button class="btn-delete" onclick="handleDeleteEmployee(${emp.id})" title="Eliminar empleado">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                    </button>
+                </div>
             </td>
         `;
         tbody.appendChild(tr);
     });
 }
 
+function startEditEmployee(id) {
+    const emp = state.employees.find(e => e.id === id);
+    if (!emp) return;
+
+    document.getElementById('emp-id').value = emp.id;
+    document.getElementById('emp-name').value = emp.name;
+    document.getElementById('emp-salary').value = emp.base_salary;
+    document.getElementById('emp-partner').checked = !!emp.is_partner;
+
+    // Cambiar textos del formulario
+    document.querySelector('#view-employees h3').textContent = 'Editar Empleado / Socio';
+    document.getElementById('emp-submit-btn').textContent = 'Guardar Cambios';
+    document.getElementById('emp-cancel-btn').classList.remove('hide');
+}
+
+function cancelEditEmployee() {
+    document.getElementById('emp-id').value = '';
+    document.getElementById('emp-name').value = '';
+    document.getElementById('emp-salary').value = '';
+    document.getElementById('emp-partner').checked = false;
+
+    // Reestablecer textos del formulario
+    document.querySelector('#view-employees h3').textContent = 'Registrar Empleado / Socio';
+    document.getElementById('emp-submit-btn').textContent = 'Guardar Empleado';
+    document.getElementById('emp-cancel-btn').classList.add('hide');
+}
+
 async function handleSaveEmployee(e) {
     e.preventDefault();
 
+    const id = document.getElementById('emp-id').value;
     const name = document.getElementById('emp-name').value.trim();
     const base_salary = parseFloat(document.getElementById('emp-salary').value);
     const is_partner = document.getElementById('emp-partner').checked;
@@ -1007,9 +1041,12 @@ async function handleSaveEmployee(e) {
         return;
     }
 
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `${API_URL}/api/employees/${id}` : `${API_URL}/api/employees`;
+
     try {
-        const response = await fetch(`${API_URL}/api/employees`, {
-            method: 'POST',
+        const response = await fetch(url, {
+            method: method,
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${state.token}`
@@ -1023,10 +1060,7 @@ async function handleSaveEmployee(e) {
             throw new Error(data.error || 'Error al guardar el empleado');
         }
 
-        document.getElementById('emp-name').value = '';
-        document.getElementById('emp-salary').value = '';
-        document.getElementById('emp-partner').checked = false;
-        
+        cancelEditEmployee();
         loadData();
     } catch (err) {
         alert(err.message);
@@ -1541,3 +1575,5 @@ window.handleConfirmPayDebtInstallment = handleConfirmPayDebtInstallment;
 window.handleRevertDebtPayment = handleRevertDebtPayment;
 window.handleDeleteDebt = handleDeleteDebt;
 window.updateDebtsMetrics = updateDebtsMetrics;
+window.startEditEmployee = startEditEmployee;
+window.cancelEditEmployee = cancelEditEmployee;

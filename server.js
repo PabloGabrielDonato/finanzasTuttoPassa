@@ -695,6 +695,28 @@ app.post('/api/employees', authenticateToken, async (req, res) => {
   }
 });
 
+// Actualizar empleado por ID
+app.put('/api/employees/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { name, base_salary, is_partner } = req.body;
+
+  if (!name || base_salary === undefined) {
+    return res.status(400).json({ error: 'El nombre y el sueldo base son obligatorios.' });
+  }
+
+  try {
+    const cleanName = name.trim();
+    await db.query(
+      'UPDATE employees SET name = ?, base_salary = ?, is_partner = ? WHERE id = ?',
+      [cleanName, parseFloat(base_salary), is_partner ? 1 : 0, id]
+    );
+    res.json({ message: 'Empleado actualizado con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar el empleado.' });
+  }
+});
+
 // Eliminar empleado
 app.delete('/api/employees/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
