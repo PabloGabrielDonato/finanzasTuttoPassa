@@ -791,3 +791,36 @@ body {
         align-items: flex-start;
     }
 }
+
+/* --- ESTILOS DE SERVICIOS --- */
+input[type="file"] {
+    padding: 0.5rem;
+    cursor: pointer;
+}
+
+.btn-view-doc {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--primary);
+    background-color: var(--primary-light);
+    border-radius: 6px;
+    text-decoration: none;
+    transition: var(--transition);
+}
+
+.btn-view-doc:hover {
+    background-color: var(--primary);
+    color: white;
+}
+
+.btn-view-doc.disabled {
+    background-color: var(--border-color);
+    color: var(--text-muted);
+    cursor: not-allowed;
+    pointer-events: none;
+}
+

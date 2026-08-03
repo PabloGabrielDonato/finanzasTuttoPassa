@@ -14,6 +14,25 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Configurar multer para subida de comprobantes y facturas
+const multer = require('multer');
+const uploadsDir = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
+});
+const upload = multer({ storage: storage });
+
 // Interfaz unificada de Base de Datos para soportar MySQL y SQLite
 let db = {
   isMySQL: false,
@@ -120,6 +139,30 @@ async function initDatabase() {
         )
       `);
 
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS service_types (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(100) NOT NULL UNIQUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS service_payments (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          service_type_id INT NOT NULL,
+          transaction_id INT NULL,
+          month VARCHAR(7) NOT NULL,
+          amount DECIMAL(12, 2) NOT NULL,
+          payment_date DATE NOT NULL,
+          ticket_path VARCHAR(255) NULL,
+          invoice_path VARCHAR(255) NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (service_type_id) REFERENCES service_types(id) ON DELETE CASCADE,
+          FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
+        )
+      `);
+
       try {
         await db.query('ALTER TABLE transactions ADD COLUMN employee_id INT NULL');
         await db.query('ALTER TABLE transactions ADD FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL');
@@ -192,6 +235,30 @@ function setupSQLite() {
         base_salary REAL NOT NULL DEFAULT 0.0,
         is_partner INTEGER NOT NULL DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS service_types (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS service_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        service_type_id INTEGER NOT NULL,
+        transaction_id INTEGER,
+        month TEXT NOT NULL,
+        amount REAL NOT NULL,
+        payment_date TEXT NOT NULL,
+        ticket_path TEXT,
+        invoice_path TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (service_type_id) REFERENCES service_types(id) ON DELETE CASCADE,
+        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
       )
     `);
 
@@ -572,6 +639,188 @@ app.delete('/api/employees/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al eliminar el empleado.' });
+  }
+});
+
+// --- RUTAS DE SERVICIOS ---
+
+// Obtener tipos de servicio
+app.get('/api/services', authenticateToken, async (req, res) => {
+  try {
+    const services = await db.query('SELECT * FROM service_types ORDER BY name ASC');
+    res.json(services);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al consultar tipos de servicios.' });
+  }
+});
+
+// Crear tipo de servicio
+app.post('/api/services', authenticateToken, async (req, res) => {
+  const { name } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: 'El nombre del tipo de servicio es obligatorio.' });
+  }
+
+  try {
+    const cleanName = name.trim();
+    const existing = await db.query('SELECT * FROM service_types WHERE LOWER(name) = LOWER(?)', [cleanName]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Este tipo de servicio ya existe.' });
+    }
+
+    const result = await db.query('INSERT INTO service_types (name) VALUES (?)', [cleanName]);
+    res.status(201).json({
+      message: 'Tipo de servicio agregado con éxito.',
+      service: {
+        id: result.insertId || null,
+        name: cleanName
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al crear el tipo de servicio.' });
+  }
+});
+
+// Eliminar tipo de servicio
+app.delete('/api/services/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.query('DELETE FROM service_types WHERE id = ?', [id]);
+    res.json({ message: 'Tipo de servicio eliminado con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar el tipo de servicio.' });
+  }
+});
+
+// Obtener pagos de servicios (filtrado opcional por mes)
+app.get('/api/service-payments', authenticateToken, async (req, res) => {
+  const { month } = req.query; // YYYY-MM
+  let queryStr = `
+    SELECT sp.*, st.name as service_name, t.description as tx_description 
+    FROM service_payments sp
+    JOIN service_types st ON sp.service_type_id = st.id
+    LEFT JOIN transactions t ON sp.transaction_id = t.id
+  `;
+  const params = [];
+  if (month) {
+    queryStr += ' WHERE sp.month = ?';
+    params.push(month);
+  }
+  queryStr += ' ORDER BY sp.payment_date DESC, sp.id DESC';
+
+  try {
+    const payments = await db.query(queryStr, params);
+    res.json(payments);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener pagos de servicios.' });
+  }
+});
+
+// Registrar pago de servicio (soporta subida de archivos)
+app.post('/api/service-payments', authenticateToken, upload.fields([
+  { name: 'ticket', maxCount: 1 },
+  { name: 'invoice', maxCount: 1 }
+]), async (req, res) => {
+  const { service_type_id, month, amount, payment_date } = req.body;
+
+  if (!service_type_id || !month || !amount || !payment_date) {
+    return res.status(400).json({ error: 'Todos los campos son obligatorios.' });
+  }
+
+  const numericAmount = parseFloat(amount);
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    return res.status(400).json({ error: 'El monto debe ser un número mayor a cero.' });
+  }
+
+  try {
+    // 1. Obtener información del tipo de servicio para la descripción del egreso
+    const services = await db.query('SELECT name FROM service_types WHERE id = ?', [service_type_id]);
+    if (services.length === 0) {
+      return res.status(404).json({ error: 'Tipo de servicio no encontrado.' });
+    }
+    const serviceName = services[0].name;
+
+    // 2. Crear transacción asociada en la tabla transactions
+    const category = 'Servicios (Luz, Agua, Gas, Internet)';
+    const description = `Pago de ${serviceName} - Mes: ${month}`;
+    
+    const txResult = await db.query(
+      'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'expense', numericAmount, category, description, payment_date, null]
+    );
+    const transactionId = txResult.insertId;
+
+    // 3. Procesar rutas de archivos subidos
+    const ticketPath = req.files && req.files['ticket'] ? '/uploads/' + req.files['ticket'][0].filename : null;
+    const invoicePath = req.files && req.files['invoice'] ? '/uploads/' + req.files['invoice'][0].filename : null;
+
+    // 4. Guardar el pago del servicio
+    const spResult = await db.query(
+      'INSERT INTO service_payments (service_type_id, transaction_id, month, amount, payment_date, ticket_path, invoice_path) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [service_type_id, transactionId, month, numericAmount, payment_date, ticketPath, invoicePath]
+    );
+
+    res.status(201).json({
+      message: 'Pago de servicio registrado con éxito.',
+      payment: {
+        id: spResult.insertId,
+        service_type_id,
+        transaction_id: transactionId,
+        month,
+        amount: numericAmount,
+        payment_date,
+        ticket_path: ticketPath,
+        invoice_path: invoicePath
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al registrar el pago de servicio.' });
+  }
+});
+
+// Eliminar pago de servicio
+app.delete('/api/service-payments/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // 1. Obtener detalles del pago para borrar los archivos físicos y la transacción
+    const payments = await db.query('SELECT * FROM service_payments WHERE id = ?', [id]);
+    if (payments.length === 0) {
+      return res.status(404).json({ error: 'Pago de servicio no encontrado.' });
+    }
+    const payment = payments[0];
+
+    // Borrar transacción vinculada
+    if (payment.transaction_id) {
+      await db.query('DELETE FROM transactions WHERE id = ?', [payment.transaction_id]);
+    }
+
+    // Borrar archivos físicos
+    if (payment.ticket_path) {
+      const fullTicketPath = path.join(__dirname, 'public', payment.ticket_path);
+      if (fs.existsSync(fullTicketPath)) {
+        fs.unlinkSync(fullTicketPath);
+      }
+    }
+    if (payment.invoice_path) {
+      const fullInvoicePath = path.join(__dirname, 'public', payment.invoice_path);
+      if (fs.existsSync(fullInvoicePath)) {
+        fs.unlinkSync(fullInvoicePath);
+      }
+    }
+
+    // Borrar registro del pago
+    await db.query('DELETE FROM service_payments WHERE id = ?', [id]);
+
+    res.json({ message: 'Pago de servicio eliminado con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar el pago de servicio.' });
   }
 });
 

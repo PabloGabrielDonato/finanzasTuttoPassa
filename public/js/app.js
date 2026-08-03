@@ -9,7 +9,9 @@ let state = {
     employees: [],
     settlements: null,
     cashflowChart: null,
-    categoriesChart: null
+    categoriesChart: null,
+    serviceTypes: [],
+    servicePayments: []
 };
 
 // --- INICIALIZACIÓN ---
@@ -18,6 +20,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const today = new Date();
     const currentMonthStr = today.toISOString().slice(0, 7);
     document.getElementById('global-month').value = currentMonthStr;
+    
+    const spMonth = document.getElementById('sp-month');
+    if (spMonth) spMonth.value = currentMonthStr;
+    
+    const spDate = document.getElementById('sp-date');
+    if (spDate) spDate.value = today.toISOString().slice(0, 10);
 
     initEventListeners();
     checkAuth();
@@ -75,6 +83,10 @@ function initEventListeners() {
 
     // Empleados Formulario
     document.getElementById('employee-form').addEventListener('submit', handleSaveEmployee);
+
+    // Servicios Formulario
+    document.getElementById('service-type-form').addEventListener('submit', handleSaveServiceType);
+    document.getElementById('service-payment-form').addEventListener('submit', handleSaveServicePayment);
 }
 
 // --- AUTENTICACIÓN ---
@@ -168,7 +180,8 @@ function switchView(viewName) {
         dashboard: 'Dashboard General',
         transactions: 'Listado de Transacciones',
         categories: 'Gestión de Categorías',
-        employees: 'Gestión de Empleados'
+        employees: 'Gestión de Empleados',
+        services: 'Gestión de Servicios y Comprobantes'
     };
     document.getElementById('view-title').textContent = titles[viewName] || 'Tutto Passa';
 
@@ -178,6 +191,9 @@ function switchView(viewName) {
         renderCategoriesTable();
     } else if (viewName === 'employees') {
         renderEmployeesTable();
+    } else if (viewName === 'services') {
+        renderServiceTypesTable();
+        renderServicePaymentsTable();
     }
 }
 
@@ -215,7 +231,24 @@ async function loadData() {
             renderSettlementsTable();
         }
 
-        // 4. Cargar Transacciones
+        // 4. Cargar Tipos de Servicios
+        const servicesResponse = await fetch(`${API_URL}/api/services`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (servicesResponse.ok && servicesResponse.headers.get('content-type')?.includes('application/json')) {
+            state.serviceTypes = await servicesResponse.json();
+            populateServiceDropdown();
+        }
+
+        // 5. Cargar Pagos de Servicios
+        const paymentsResponse = await fetch(`${API_URL}/api/service-payments?month=${selectedMonth}`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (paymentsResponse.ok && paymentsResponse.headers.get('content-type')?.includes('application/json')) {
+            state.servicePayments = await paymentsResponse.json();
+        }
+
+        // 6. Cargar Transacciones
         const response = await fetch(`${API_URL}/api/transactions?month=${selectedMonth}`, {
             headers: {
                 'Authorization': `Bearer ${state.token}`
@@ -238,6 +271,9 @@ async function loadData() {
             renderCategoriesTable();
         } else if (state.currentView === 'employees') {
             renderEmployeesTable();
+        } else if (state.currentView === 'services') {
+            renderServiceTypesTable();
+            renderServicePaymentsTable();
         }
     } catch (err) {
         console.error('Error al cargar datos:', err);
@@ -971,5 +1007,218 @@ function renderSettlementsTable() {
         tbody.appendChild(tr);
     });
 }
+
+// --- LÓGICA DE SERVICIOS ---
+
+function populateServiceDropdown() {
+    const selectEl = document.getElementById('sp-service-type');
+    if (!selectEl) return;
+
+    // Guardar el valor seleccionado actual
+    const currentVal = selectEl.value;
+
+    selectEl.innerHTML = '<option value="" disabled selected>Selecciona servicio</option>';
+    state.serviceTypes.forEach(s => {
+        const option = document.createElement('option');
+        option.value = s.id;
+        option.textContent = s.name;
+        selectEl.appendChild(option);
+    });
+
+    if (currentVal) {
+        selectEl.value = currentVal;
+    }
+}
+
+function renderServiceTypesTable() {
+    const tbody = document.getElementById('service-types-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+
+    if (state.serviceTypes.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="2" style="text-align: center; color: var(--text-muted); padding: 1rem;">No hay tipos de servicios registrados.</td></tr>`;
+        return;
+    }
+
+    state.serviceTypes.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${s.name}</strong></td>
+            <td>
+                <button class="btn-danger btn-sm" onclick="handleDeleteServiceType(${s.id})">
+                    Eliminar
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function renderServicePaymentsTable() {
+    const tbody = document.getElementById('service-payments-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+
+    if (state.servicePayments.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No hay pagos registrados para este mes.</td></tr>`;
+        return;
+    }
+
+    state.servicePayments.forEach(p => {
+        const tr = document.createElement('tr');
+        const formattedAmount = parseFloat(p.amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+        
+        const ticketBtn = p.ticket_path 
+            ? `<a href="${p.ticket_path}" target="_blank" class="btn-view-doc">📄 Ver Ticket</a>`
+            : `<span class="text-muted" style="font-size: 0.85rem;">— No adjunto</span>`;
+            
+        const invoiceBtn = p.invoice_path 
+            ? `<a href="${p.invoice_path}" target="_blank" class="btn-view-doc">📄 Ver Factura</a>`
+            : `<span class="text-muted" style="font-size: 0.85rem;">— No adjunta</span>`;
+
+        tr.innerHTML = `
+            <td><strong>${p.service_name}</strong></td>
+            <td>${p.month}</td>
+            <td>${p.payment_date}</td>
+            <td style="font-weight: 600; color: var(--danger);">${formattedAmount}</td>
+            <td>${ticketBtn}</td>
+            <td>${invoiceBtn}</td>
+            <td>
+                <button class="btn-danger btn-sm" onclick="handleDeleteServicePayment(${p.id})">
+                    Eliminar
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function safeResponseJSON(response, defaultErrorMsg) {
+    const text = await response.text();
+    let data = {};
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        if (!response.ok) {
+            if (response.status === 404 || text.trim().startsWith('<!DOCTYPE')) {
+                throw new Error(`${defaultErrorMsg} (El endpoint no se encontró. Por favor, asegúrate de reiniciar el servidor backend para aplicar los cambios de server.js).`);
+            }
+            throw new Error(defaultErrorMsg);
+        }
+    }
+    if (!response.ok) {
+        throw new Error(data.error || defaultErrorMsg);
+    }
+    return data;
+}
+
+async function handleSaveServiceType(e) {
+    e.preventDefault();
+    const nameEl = document.getElementById('st-name');
+    const name = nameEl.value;
+
+    try {
+        const response = await fetch(`${API_URL}/api/services`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: JSON.stringify({ name })
+        });
+
+        await safeResponseJSON(response, 'Error al guardar tipo de servicio');
+
+        nameEl.value = '';
+        loadData();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+async function handleSaveServicePayment(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData();
+
+    formData.append('service_type_id', document.getElementById('sp-service-type').value);
+    formData.append('month', document.getElementById('sp-month').value);
+    formData.append('payment_date', document.getElementById('sp-date').value);
+    formData.append('amount', document.getElementById('sp-amount').value);
+
+    const ticketFile = document.getElementById('sp-ticket').files[0];
+    const invoiceFile = document.getElementById('sp-invoice').files[0];
+
+    if (ticketFile) formData.append('ticket', ticketFile);
+    if (invoiceFile) formData.append('invoice', invoiceFile);
+
+    try {
+        const response = await fetch(`${API_URL}/api/service-payments`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: formData
+        });
+
+        await safeResponseJSON(response, 'Error al registrar el pago de servicio');
+
+        form.reset();
+        
+        // Volver a establecer mes y fecha actuales por defecto en el formulario
+        const today = new Date();
+        document.getElementById('sp-month').value = today.toISOString().slice(0, 7);
+        document.getElementById('sp-date').value = today.toISOString().slice(0, 10);
+
+        loadData();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+async function handleDeleteServiceType(id) {
+    if (!confirm('¿Estás seguro de que deseas eliminar este tipo de servicio? Se eliminarán todos los registros de pago y comprobantes asociados de forma permanente.')) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/services/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            }
+        });
+
+        await safeResponseJSON(response, 'Error al eliminar el tipo de servicio');
+
+        loadData();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+async function handleDeleteServicePayment(id) {
+    if (!confirm('¿Estás seguro de que deseas eliminar este pago? Se borrarán de forma permanente los archivos adjuntos y también el egreso registrado en las transacciones generales.')) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/service-payments/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            }
+        });
+
+        await safeResponseJSON(response, 'Error al eliminar el pago de servicio');
+
+        loadData();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+// Exponer funciones globales al objeto window para los onclick inline de las tablas
+window.handleDeleteServiceType = handleDeleteServiceType;
+window.handleDeleteServicePayment = handleDeleteServicePayment;
+
 
 

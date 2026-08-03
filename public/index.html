@@ -79,6 +79,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                     Empleados
                 </button>
+                <button class="nav-item" data-view="services">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                    Servicios
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -346,6 +350,101 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+            </section>
+
+            <!-- CONTENIDO DE LA VISTA: SERVICIOS -->
+            <section id="view-services" class="content-view hide">
+                <div class="dashboard-grid">
+                    <!-- Formulario de registrar pago -->
+                    <div class="card-panel">
+                        <div class="panel-header">
+                            <h3>Registrar Pago de Servicio</h3>
+                        </div>
+                        <form id="service-payment-form" enctype="multipart/form-data">
+                            <div class="form-group">
+                                <label for="sp-service-type">Tipo de Servicio</label>
+                                <select id="sp-service-type" required>
+                                    <option value="" disabled selected>Selecciona servicio</option>
+                                    <!-- Opciones dinámicas -->
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="sp-month">Mes del Servicio</label>
+                                <input type="month" id="sp-month" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="sp-date">Fecha de Pago</label>
+                                <input type="date" id="sp-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="sp-amount">Monto ($)</label>
+                                <input type="number" step="0.01" id="sp-amount" placeholder="0.00" required min="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label for="sp-ticket">Ticket de Pago (Comprobante)</label>
+                                <input type="file" id="sp-ticket" accept="image/*,application/pdf">
+                            </div>
+                            <div class="form-group">
+                                <label for="sp-invoice">Factura Pagada</label>
+                                <input type="file" id="sp-invoice" accept="image/*,application/pdf">
+                            </div>
+                            <button type="submit" class="btn-primary btn-block">Registrar Pago</button>
+                        </form>
+                    </div>
+
+                    <!-- Gestión de Tipos de Servicios -->
+                    <div class="card-panel">
+                        <div class="panel-header">
+                            <h3>Tipos de Servicios</h3>
+                        </div>
+                        <form id="service-type-form" style="margin-bottom: 1.5rem;">
+                            <div class="form-group">
+                                <label for="st-name">Nuevo Tipo de Servicio</label>
+                                <input type="text" id="st-name" placeholder="Ej: Luz Edesur, Gas Metrogas..." required>
+                            </div>
+                            <button type="submit" class="btn-primary btn-block">Agregar Tipo</button>
+                        </form>
+                        
+                        <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="service-types-tbody">
+                                    <!-- Filas dinámicas -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Historial de Pagos de Servicios -->
+                <div class="card-panel" style="margin-top: 2rem;">
+                    <div class="panel-header">
+                        <h3>Historial de Pagos</h3>
+                        <span>Pagos registrados</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Servicio</th>
+                                    <th>Mes Pago</th>
+                                    <th>Fecha Pago</th>
+                                    <th>Monto</th>
+                                    <th>Ticket / Comprobante</th>
+                                    <th>Factura</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="service-payments-tbody">
+                                <!-- Filas dinámicas -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>
