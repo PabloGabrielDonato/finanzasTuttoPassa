@@ -5,7 +5,7 @@ node_modules/
 .env
 
 # Base de datos local
-#database.sqlite
+database.sqlite
 
 # Archivos subidos por los usuarios (comprobantes y facturas)
 public/uploads/
