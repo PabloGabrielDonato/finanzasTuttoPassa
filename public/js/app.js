@@ -41,13 +41,42 @@ function initEventListeners() {
     document.getElementById('login-form').addEventListener('submit', handleLogin);
     document.getElementById('logout-btn').addEventListener('click', handleLogout);
 
-    // Navegación Sidebar
+    // Navegación Sidebar y Mobile Drawer Toggle
+    const sidebar = document.getElementById('app-sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
+
+    const closeMobileSidebar = () => {
+        if (sidebar) sidebar.classList.remove('active');
+        if (backdrop) backdrop.classList.add('hide');
+    };
+
     document.querySelectorAll('.nav-item').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const targetView = e.currentTarget.getAttribute('data-view');
             switchView(targetView);
+            closeMobileSidebar();
         });
     });
+
+    const hamburgerBtn = document.getElementById('hamburger-menu-btn');
+    if (hamburgerBtn) {
+        hamburgerBtn.addEventListener('click', () => {
+            if (sidebar) {
+                const isActive = sidebar.classList.toggle('active');
+                if (backdrop) {
+                    if (isActive) {
+                        backdrop.classList.remove('hide');
+                    } else {
+                        backdrop.classList.add('hide');
+                    }
+                }
+            }
+        });
+    }
+
+    if (backdrop) {
+        backdrop.addEventListener('click', closeMobileSidebar);
+    }
 
     // Filtros de mes y filtros de tabla
     document.getElementById('global-month').addEventListener('change', () => {

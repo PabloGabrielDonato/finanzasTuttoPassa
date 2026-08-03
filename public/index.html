@@ -52,8 +52,11 @@
     <!-- 2. Dashboard Administrativo principal -->
     <div id="app-container" class="app-container hide">
         
+        <!-- Sidebar Backdrop -->
+        <div id="sidebar-backdrop" class="sidebar-backdrop hide"></div>
+        
         <!-- Sidebar (Panel Lateral) -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="app-sidebar">
             <div class="sidebar-header">
                 <span class="logo-icon">☕</span>
                 <div class="sidebar-title">
@@ -107,7 +110,10 @@
         <main class="main-content">
             <!-- Topbar -->
             <header class="topbar">
-                <div class="topbar-left">
+                <div class="topbar-left" style="display: flex; align-items: center; gap: 0.75rem;">
+                    <button class="hamburger-btn" id="hamburger-menu-btn" aria-label="Abrir Menú">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                    </button>
                     <h2 id="view-title">Dashboard</h2>
                 </div>
                 <div class="topbar-right">
@@ -263,7 +269,7 @@
             
             <!-- CONTENIDO DE LA VISTA: CATEGORÍAS -->
             <section id="view-categories" class="content-view hide">
-                <div class="dashboard-grid">
+                <div class="dashboard-grid grid-form-table">
                     <!-- Formulario de nueva categoría -->
                     <div class="card-panel">
                         <div class="panel-header">
@@ -311,7 +317,7 @@
 
             <!-- CONTENIDO DE LA VISTA: EMPLEADOS -->
             <section id="view-employees" class="content-view hide">
-                <div class="dashboard-grid">
+                <div class="dashboard-grid grid-form-table">
                     <!-- Formulario de nuevo empleado -->
                     <div class="card-panel">
                         <div class="panel-header">
@@ -359,7 +365,7 @@
 
             <!-- CONTENIDO DE LA VISTA: SERVICIOS -->
             <section id="view-services" class="content-view hide">
-                <div class="dashboard-grid">
+                <div class="dashboard-grid grid-form-table">
                     <!-- Formulario de registrar pago -->
                     <div class="card-panel">
                         <div class="panel-header">
@@ -480,7 +486,7 @@
                     </div>
                 </div>
 
-                <div class="dashboard-grid">
+                <div class="dashboard-grid grid-form-table">
                     <!-- Registrar Deuda -->
                     <div class="card-panel">
                         <div class="panel-header">
@@ -659,6 +665,6 @@
     </div>
 
     <!-- App Script -->
-    <script src="js/app.js?v=1.0.2"></script>
+    <script src="js/app.js?v=1.0.4"></script>
 </body>
 </html>

@@ -416,6 +416,23 @@ body {
     background-color: #d1d5db;
 }
 
+.hamburger-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text-main);
+    cursor: pointer;
+    padding: 0.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: var(--transition);
+}
+
+.hamburger-btn:hover {
+    background-color: var(--border-color);
+}
+
 /* Paneles y Secciones */
 .content-view {
     padding: 2rem;
@@ -738,40 +755,74 @@ body {
     body {
         flex-direction: column;
     }
-    .app-container {
-        flex-direction: column;
+
+    .hamburger-btn {
+        display: inline-flex;
     }
+
+    /* Sidebar como Cajón Desplegable (Drawer) */
     .sidebar {
-        width: 100%;
-        height: auto;
-        padding: 1rem;
-        flex-direction: row;
-        align-items: center;
+        position: fixed;
+        top: 0;
+        left: -270px;
+        width: 260px;
+        height: 100vh;
+        z-index: 1001;
+        transition: left 0.3s ease-in-out;
+        flex-direction: column;
+        justify-content: space-between;
+        box-shadow: var(--shadow-lg);
+        padding: 1.5rem;
     }
+
+    .sidebar.active {
+        left: 0;
+    }
+
     .sidebar-header {
-        border-bottom: none;
-        padding-bottom: 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 2rem;
     }
+
     .sidebar-nav {
-        flex-direction: row;
-        margin-top: 0;
-        flex-grow: unset;
-        gap: 0.25rem;
-    }
-    .nav-item {
-        padding: 0.5rem 0.75rem;
-        font-size: 0.85rem;
-    }
-    .nav-item span {
-        display: none;
-    }
-    .sidebar-footer {
-        border-top: none;
-        padding-top: 0;
+        flex-direction: column;
+        margin-top: 1.5rem;
+        flex-grow: 1;
         gap: 0.5rem;
     }
+
+    .nav-item {
+        padding: 0.75rem 1rem;
+        font-size: 0.95rem;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .nav-item span {
+        display: inline !important;
+    }
+
+    .sidebar-footer {
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        padding-top: 1.5rem;
+        gap: 1rem;
+    }
+
     .user-profile {
-        display: none;
+        display: flex !important;
+    }
+
+    /* Fondo oscuro al abrir el menú */
+    .sidebar-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
     }
     .topbar {
         flex-direction: column;
@@ -822,5 +873,25 @@ input[type="file"] {
     color: var(--text-muted);
     cursor: not-allowed;
     pointer-events: none;
+}
+
+/* --- LAYOUTS ESPECÍFICOS DE FORMULARIO/TABLA --- */
+.grid-form-table {
+    grid-template-columns: 320px 1fr !important;
+}
+
+@media (max-width: 900px) {
+    .grid-form-table {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* Botones pequeños para acciones en tablas */
+.btn-sm {
+    padding: 0.4rem 0.8rem !important;
+    font-size: 0.8rem !important;
+    border-radius: 6px !important;
+    font-weight: 500 !important;
+    white-space: nowrap;
 }
 
