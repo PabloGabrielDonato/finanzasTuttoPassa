@@ -581,6 +581,7 @@ body {
     display: flex;
     gap: 1rem;
     width: 100%;
+    flex-wrap: wrap;
 }
 
 .filters select {
@@ -590,6 +591,8 @@ body {
     background-color: #f9fafb;
     font-size: 0.875rem;
     outline: none;
+    flex: 1;
+    min-width: 140px;
 }
 
 .table-responsive {
