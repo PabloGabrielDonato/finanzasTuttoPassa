@@ -11,7 +11,8 @@ let state = {
     cashflowChart: null,
     categoriesChart: null,
     serviceTypes: [],
-    servicePayments: []
+    servicePayments: [],
+    debts: []
 };
 
 // --- INICIALIZACIÓN ---
@@ -26,6 +27,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const spDate = document.getElementById('sp-date');
     if (spDate) spDate.value = today.toISOString().slice(0, 10);
+
+    const dpDate = document.getElementById('dp-payment-date');
+    if (dpDate) dpDate.value = today.toISOString().slice(0, 10);
 
     initEventListeners();
     checkAuth();
@@ -87,6 +91,39 @@ function initEventListeners() {
     // Servicios Formulario
     document.getElementById('service-type-form').addEventListener('submit', handleSaveServiceType);
     document.getElementById('service-payment-form').addEventListener('submit', handleSaveServicePayment);
+
+    // Deudas Formulario
+    document.getElementById('debt-form').addEventListener('submit', handleSaveDebt);
+    
+    // Auto-cálculo de cuota en Deudas
+    const calculateInstallmentAmount = () => {
+        const total = parseFloat(document.getElementById('db-total-amount').value) || 0;
+        const installments = parseInt(document.getElementById('db-installments').value) || 0;
+        if (total > 0 && installments > 0) {
+            document.getElementById('db-installment-amount').value = (total / installments).toFixed(2);
+        } else {
+            document.getElementById('db-installment-amount').value = '';
+        }
+    };
+    document.getElementById('db-total-amount').addEventListener('input', calculateInstallmentAmount);
+    document.getElementById('db-installments').addEventListener('input', calculateInstallmentAmount);
+
+    // Modal de Pago de Cuota
+    document.getElementById('close-debt-pay-btn').addEventListener('click', () => {
+        document.getElementById('debt-pay-modal').classList.add('hide');
+    });
+    document.getElementById('cancel-debt-pay-btn').addEventListener('click', () => {
+        document.getElementById('debt-pay-modal').classList.add('hide');
+    });
+    document.getElementById('debt-pay-form').addEventListener('submit', handleConfirmPayDebtInstallment);
+
+    // Modal de Historial de Cuotas
+    document.getElementById('close-debt-history-btn').addEventListener('click', () => {
+        document.getElementById('debt-history-modal').classList.add('hide');
+    });
+    document.getElementById('close-debt-history-footer-btn').addEventListener('click', () => {
+        document.getElementById('debt-history-modal').classList.add('hide');
+    });
 }
 
 // --- AUTENTICACIÓN ---
@@ -181,7 +218,8 @@ function switchView(viewName) {
         transactions: 'Listado de Transacciones',
         categories: 'Gestión de Categorías',
         employees: 'Gestión de Empleados',
-        services: 'Gestión de Servicios y Comprobantes'
+        services: 'Gestión de Servicios y Comprobantes',
+        debts: 'Control de Deudas y Financiación'
     };
     document.getElementById('view-title').textContent = titles[viewName] || 'Tutto Passa';
 
@@ -194,6 +232,8 @@ function switchView(viewName) {
     } else if (viewName === 'services') {
         renderServiceTypesTable();
         renderServicePaymentsTable();
+    } else if (viewName === 'debts') {
+        renderDebtsTable();
     }
 }
 
@@ -248,7 +288,16 @@ async function loadData() {
             state.servicePayments = await paymentsResponse.json();
         }
 
-        // 6. Cargar Transacciones
+        // 6. Cargar Deudas
+        const debtsResponse = await fetch(`${API_URL}/api/debts`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (debtsResponse.ok && debtsResponse.headers.get('content-type')?.includes('application/json')) {
+            state.debts = await debtsResponse.json();
+            updateDebtsMetrics();
+        }
+
+        // 7. Cargar Transacciones
         const response = await fetch(`${API_URL}/api/transactions?month=${selectedMonth}`, {
             headers: {
                 'Authorization': `Bearer ${state.token}`
@@ -274,6 +323,8 @@ async function loadData() {
         } else if (state.currentView === 'services') {
             renderServiceTypesTable();
             renderServicePaymentsTable();
+        } else if (state.currentView === 'debts') {
+            renderDebtsTable();
         }
     } catch (err) {
         console.error('Error al cargar datos:', err);
@@ -1220,5 +1271,244 @@ async function handleDeleteServicePayment(id) {
 window.handleDeleteServiceType = handleDeleteServiceType;
 window.handleDeleteServicePayment = handleDeleteServicePayment;
 
+// --- LÓGICA DE DEUDAS ---
 
+function updateDebtsMetrics() {
+    let totalRemaining = 0;
+    let pendingInstallments = 0;
+    let totalPaid = 0;
 
+    state.debts.forEach(d => {
+        const remainingInstallments = Math.max(0, d.installments - d.installments_paid);
+        totalRemaining += remainingInstallments * d.installment_amount;
+        pendingInstallments += remainingInstallments;
+        totalPaid += d.installments_paid * d.installment_amount;
+    });
+
+    const remEl = document.getElementById('metric-debts-remaining');
+    const pendEl = document.getElementById('metric-installments-remaining');
+    const paidEl = document.getElementById('metric-debts-paid');
+
+    if (remEl) remEl.textContent = totalRemaining.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+    if (pendEl) pendEl.textContent = pendingInstallments.toString();
+    if (paidEl) paidEl.textContent = totalPaid.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+}
+
+function renderDebtsTable() {
+    const tbody = document.getElementById('debts-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+
+    if (state.debts.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No hay deudas registradas.</td></tr>`;
+        return;
+    }
+
+    state.debts.forEach(d => {
+        const tr = document.createElement('tr');
+        const formattedTotal = d.total_amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+        const formattedInstallment = d.installment_amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+        
+        const remainingInstallments = Math.max(0, d.installments - d.installments_paid);
+        const remainingBalance = remainingInstallments * d.installment_amount;
+        const formattedRemaining = remainingBalance.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+
+        const isFullyPaid = d.installments_paid >= d.installments;
+
+        const payButton = isFullyPaid 
+            ? `<span class="badge badge-income">Totalmente Pagada</span>`
+            : `<button class="btn-success btn-sm" onclick="openPayInstallmentModal(${d.id}, '${d.name}', ${d.installment_amount})">Pagar Cuota</button>`;
+
+        tr.innerHTML = `
+            <td><strong>${d.name}</strong></td>
+            <td>${formattedTotal}</td>
+            <td>Día ${d.due_day}</td>
+            <td><span class="badge ${isFullyPaid ? 'badge-income' : 'badge-expense'}">${d.installments_paid} / ${d.installments}</span></td>
+            <td>${formattedInstallment}</td>
+            <td style="font-weight: 600; color: ${isFullyPaid ? 'var(--success)' : 'var(--danger)'};">${formattedRemaining}</td>
+            <td>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    ${payButton}
+                    <button class="btn-primary btn-sm" onclick="openDebtHistoryModal(${d.id}, '${d.name}')">Ver Historial</button>
+                    <button class="btn-danger btn-sm" onclick="handleDeleteDebt(${d.id})">Eliminar</button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function handleSaveDebt(e) {
+    e.preventDefault();
+    const name = document.getElementById('db-name').value;
+    const total_amount = document.getElementById('db-total-amount').value;
+    const installments = document.getElementById('db-installments').value;
+    const installment_amount = document.getElementById('db-installment-amount').value;
+    const due_day = document.getElementById('db-due-day').value;
+
+    try {
+        const response = await fetch(`${API_URL}/api/debts`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: JSON.stringify({ name, total_amount, installments, installment_amount, due_day })
+        });
+
+        await safeResponseJSON(response, 'Error al guardar la deuda');
+
+        e.target.reset();
+        
+        // Resetear valor por defecto del día de vencimiento
+        document.getElementById('db-due-day').value = '10';
+
+        loadData();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+function openPayInstallmentModal(id, name, amount) {
+    document.getElementById('dp-debt-id').value = id;
+    document.getElementById('dp-debt-name').value = name;
+    document.getElementById('dp-debt-amount').value = parseFloat(amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+    
+    const today = new Date();
+    document.getElementById('dp-payment-date').value = today.toISOString().slice(0, 10);
+    document.getElementById('dp-ticket').value = '';
+
+    document.getElementById('debt-pay-modal').classList.remove('hide');
+}
+
+async function handleConfirmPayDebtInstallment(e) {
+    e.preventDefault();
+    const form = e.target;
+    const id = document.getElementById('dp-debt-id').value;
+
+    const formData = new FormData();
+    formData.append('payment_date', document.getElementById('dp-payment-date').value);
+
+    const ticketFile = document.getElementById('dp-ticket').files[0];
+    if (ticketFile) {
+        formData.append('ticket', ticketFile);
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/debts/${id}/pay-installment`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: formData
+        });
+
+        await safeResponseJSON(response, 'Error al registrar el pago de la cuota');
+
+        document.getElementById('debt-pay-modal').classList.add('hide');
+        form.reset();
+        loadData();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+async function openDebtHistoryModal(id, name) {
+    document.getElementById('debt-history-title').textContent = `Historial de Cuotas - ${name}`;
+    const tbody = document.getElementById('debt-history-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1rem;">Cargando historial...</td></tr>`;
+    document.getElementById('debt-history-modal').classList.remove('hide');
+
+    try {
+        const response = await fetch(`${API_URL}/api/debts/${id}/payments`, {
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            }
+        });
+
+        const payments = await safeResponseJSON(response, 'Error al cargar historial de cuotas');
+        
+        tbody.innerHTML = '';
+
+        if (payments.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">No hay cuotas pagadas para esta deuda.</td></tr>`;
+            return;
+        }
+
+        payments.forEach(p => {
+            const tr = document.createElement('tr');
+            const formattedAmount = parseFloat(p.amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+            
+            const ticketBtn = p.ticket_path 
+                ? `<a href="${p.ticket_path}" target="_blank" class="btn-view-doc">📄 Ver Comprobante</a>`
+                : `<span class="text-muted" style="font-size: 0.85rem;">— Sin comprobante</span>`;
+
+            tr.innerHTML = `
+                <td><strong>Cuota ${p.installment_number}</strong></td>
+                <td>${formattedAmount}</td>
+                <td>${p.payment_date}</td>
+                <td>${ticketBtn}</td>
+                <td>
+                    <button class="btn-danger btn-sm" onclick="handleRevertDebtPayment(${p.id}, ${id}, '${name}')">
+                        Revertir Pago
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger); padding: 1rem;">${err.message}</td></tr>`;
+    }
+}
+
+async function handleRevertDebtPayment(paymentId, debtId, debtName) {
+    if (!confirm('¿Estás seguro de que deseas revertir el pago de esta cuota? Se eliminará permanentemente la transacción de egreso general y el comprobante asociado.')) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/debt-payments/${paymentId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            }
+        });
+
+        await safeResponseJSON(response, 'Error al revertir el pago de la cuota');
+
+        // Volver a cargar datos generales
+        await loadData();
+        // Recargar el modal de historial
+        await openDebtHistoryModal(debtId, debtName);
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+async function handleDeleteDebt(id) {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta deuda? Las transacciones asociadas a cuotas pagadas previamente no se borrarán del historial.')) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/debts/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            }
+        });
+
+        await safeResponseJSON(response, 'Error al eliminar la deuda');
+
+        loadData();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+// Exponer funciones globales al objeto window
+window.openPayInstallmentModal = openPayInstallmentModal;
+window.openDebtHistoryModal = openDebtHistoryModal;
+window.handleConfirmPayDebtInstallment = handleConfirmPayDebtInstallment;
+window.handleRevertDebtPayment = handleRevertDebtPayment;
+window.handleDeleteDebt = handleDeleteDebt;
+window.updateDebtsMetrics = updateDebtsMetrics;

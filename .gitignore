@@ -1,0 +1,11 @@
+# Dependencias
+node_modules/
+
+# Configuración y secretos
+.env
+
+# Base de datos local
+#database.sqlite
+
+# Archivos subidos por los usuarios (comprobantes y facturas)
+public/uploads/

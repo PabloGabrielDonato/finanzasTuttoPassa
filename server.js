@@ -163,6 +163,40 @@ async function initDatabase() {
         )
       `);
 
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS debts (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          total_amount DECIMAL(12, 2) NOT NULL,
+          installments INT NOT NULL,
+          installment_amount DECIMAL(12, 2) NOT NULL,
+          installments_paid INT NOT NULL DEFAULT 0,
+          due_day INT NOT NULL DEFAULT 10,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS debt_payments (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          debt_id INT NOT NULL,
+          transaction_id INT NULL,
+          installment_number INT NOT NULL,
+          amount DECIMAL(12, 2) NOT NULL,
+          payment_date DATE NOT NULL,
+          ticket_path VARCHAR(255) NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (debt_id) REFERENCES debts(id) ON DELETE CASCADE,
+          FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
+        )
+      `);
+
+      try {
+        await db.query('ALTER TABLE debts ADD COLUMN due_day INT NOT NULL DEFAULT 10');
+      } catch (e) {
+        // Ignorar si la columna ya existe
+      }
+
       try {
         await db.query('ALTER TABLE transactions ADD COLUMN employee_id INT NULL');
         await db.query('ALTER TABLE transactions ADD FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL');
@@ -261,6 +295,38 @@ function setupSQLite() {
         FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
       )
     `);
+
+    db.sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS debts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        total_amount REAL NOT NULL,
+        installments INTEGER NOT NULL,
+        installment_amount REAL NOT NULL,
+        installments_paid INTEGER NOT NULL DEFAULT 0,
+        due_day INTEGER NOT NULL DEFAULT 10,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS debt_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        debt_id INTEGER NOT NULL,
+        transaction_id INTEGER,
+        installment_number INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        payment_date TEXT NOT NULL,
+        ticket_path TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (debt_id) REFERENCES debts(id) ON DELETE CASCADE,
+        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
+      )
+    `);
+
+    db.sqliteDb.run('ALTER TABLE debts ADD COLUMN due_day INTEGER DEFAULT 10', (err) => {
+      // Ignorar si la columna ya existe
+    });
 
     db.sqliteDb.run('ALTER TABLE transactions ADD COLUMN employee_id INTEGER', (err) => {
       // Ignorar si la columna ya existe
@@ -821,6 +887,215 @@ app.delete('/api/service-payments/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al eliminar el pago de servicio.' });
+  }
+});
+
+// --- RUTAS DE DEUDAS ---
+
+// Obtener todas las deudas (con conteo dinámico de cuotas pagadas)
+app.get('/api/debts', authenticateToken, async (req, res) => {
+  try {
+    const debts = await db.query(`
+      SELECT d.*, COUNT(dp.id) as installments_paid
+      FROM debts d
+      LEFT JOIN debt_payments dp ON d.id = dp.debt_id
+      GROUP BY d.id
+      ORDER BY d.created_at DESC
+    `);
+    
+    // Si la consulta agrupada por id en SQLite o MySQL no devuelve todos los campos correctamente, 
+    // nos aseguramos de dar formato limpio. En SQLite/MySQL estándar, el GROUP BY d.id funciona.
+    res.json(debts);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al consultar deudas.' });
+  }
+});
+
+// Registrar nueva deuda
+app.post('/api/debts', authenticateToken, async (req, res) => {
+  const { name, total_amount, installments, installment_amount, due_day } = req.body;
+
+  if (!name || !total_amount || !installments || !installment_amount || !due_day) {
+    return res.status(400).json({ error: 'Todos los campos son obligatorios.' });
+  }
+
+  const numTotalAmount = parseFloat(total_amount);
+  const numInstallments = parseInt(installments);
+  const numInstallmentAmount = parseFloat(installment_amount);
+  const numDueDay = parseInt(due_day);
+
+  if (isNaN(numTotalAmount) || numTotalAmount <= 0) {
+    return res.status(400).json({ error: 'El monto total debe ser mayor a cero.' });
+  }
+  if (isNaN(numInstallments) || numInstallments <= 0) {
+    return res.status(400).json({ error: 'La cantidad de cuotas debe ser mayor a cero.' });
+  }
+  if (isNaN(numInstallmentAmount) || numInstallmentAmount <= 0) {
+    return res.status(400).json({ error: 'El dinero por cuota debe ser mayor a cero.' });
+  }
+  if (isNaN(numDueDay) || numDueDay < 1 || numDueDay > 31) {
+    return res.status(400).json({ error: 'El día de vencimiento debe estar entre 1 y 31.' });
+  }
+
+  try {
+    const result = await db.query(
+      'INSERT INTO debts (name, total_amount, installments, installment_amount, installments_paid, due_day) VALUES (?, ?, ?, ?, 0, ?)',
+      [name.trim(), numTotalAmount, numInstallments, numInstallmentAmount, numDueDay]
+    );
+
+    res.status(201).json({
+      message: 'Deuda registrada con éxito.',
+      debt: {
+        id: result.insertId,
+        name: name.trim(),
+        total_amount: numTotalAmount,
+        installments: numInstallments,
+        installment_amount: numInstallmentAmount,
+        installments_paid: 0,
+        due_day: numDueDay
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al registrar la deuda.' });
+  }
+});
+
+// Obtener historial de cuotas pagadas de una deuda
+app.get('/api/debts/:id/payments', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const payments = await db.query('SELECT * FROM debt_payments WHERE debt_id = ? ORDER BY installment_number ASC', [id]);
+    res.json(payments);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al consultar historial de cuotas.' });
+  }
+});
+
+// Pagar la siguiente cuota de una deuda (soporta comprobante opcional)
+app.post('/api/debts/:id/pay-installment', authenticateToken, upload.single('ticket'), async (req, res) => {
+  const { id } = req.params;
+  const { payment_date } = req.body;
+
+  if (!payment_date) {
+    return res.status(400).json({ error: 'La fecha de pago es obligatoria.' });
+  }
+
+  try {
+    const debts = await db.query('SELECT * FROM debts WHERE id = ?', [id]);
+    if (debts.length === 0) {
+      return res.status(404).json({ error: 'Deuda no encontrada.' });
+    }
+    const debt = debts[0];
+
+    // Contar cuántas cuotas se pagaron realmente
+    const paidCountRows = await db.query('SELECT COUNT(*) as count FROM debt_payments WHERE debt_id = ?', [id]);
+    const paidCount = paidCountRows[0].count;
+
+    if (paidCount >= debt.installments) {
+      return res.status(400).json({ error: 'Esta deuda ya está totalmente pagada.' });
+    }
+
+    const nextInstallmentNum = paidCount + 1;
+
+    // 1. Crear transacción de egreso asociada
+    const category = 'Pago de Deuda';
+    const description = `Cuota ${nextInstallmentNum}/${debt.installments} - ${debt.name}`;
+    
+    const txResult = await db.query(
+      'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'expense', debt.installment_amount, category, description, payment_date, null]
+    );
+    const transactionId = txResult.insertId;
+
+    // 2. Procesar ticket si se adjuntó
+    const ticketPath = req.file ? '/uploads/' + req.file.filename : null;
+
+    // 3. Crear registro en debt_payments
+    await db.query(
+      'INSERT INTO debt_payments (debt_id, transaction_id, installment_number, amount, payment_date, ticket_path) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, transactionId, nextInstallmentNum, debt.installment_amount, payment_date, ticketPath]
+    );
+
+    // 4. Actualizar el contador de cuotas en la tabla principal de debts para retrocompatibilidad
+    await db.query('UPDATE debts SET installments_paid = ? WHERE id = ?', [nextInstallmentNum, id]);
+
+    res.status(201).json({
+      message: `Cuota ${nextInstallmentNum} pagada con éxito.`,
+      installment_number: nextInstallmentNum
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al registrar el pago de la cuota.' });
+  }
+});
+
+// Eliminar deuda
+app.delete('/api/debts/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // 1. Buscar pagos asociados para borrar sus archivos físicos
+    const payments = await db.query('SELECT * FROM debt_payments WHERE debt_id = ?', [id]);
+    for (const p of payments) {
+      if (p.ticket_path) {
+        const fullPath = path.join(__dirname, 'public', p.ticket_path);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+        }
+      }
+      if (p.transaction_id) {
+        await db.query('DELETE FROM transactions WHERE id = ?', [p.transaction_id]);
+      }
+    }
+
+    // 2. Eliminar deuda (borra en cascada los pagos gracias al ON DELETE CASCADE)
+    await db.query('DELETE FROM debts WHERE id = ?', [id]);
+    res.json({ message: 'Deuda eliminada con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar la deuda.' });
+  }
+});
+
+// Eliminar un pago de cuota específico (revertir pago)
+app.delete('/api/debt-payments/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const payments = await db.query('SELECT * FROM debt_payments WHERE id = ?', [id]);
+    if (payments.length === 0) {
+      return res.status(404).json({ error: 'Pago de cuota no encontrado.' });
+    }
+    const payment = payments[0];
+
+    // Borrar la transacción asociada en transactions
+    if (payment.transaction_id) {
+      await db.query('DELETE FROM transactions WHERE id = ?', [payment.transaction_id]);
+    }
+
+    // Borrar el archivo físico si existía
+    if (payment.ticket_path) {
+      const fullTicketPath = path.join(__dirname, 'public', payment.ticket_path);
+      if (fs.existsSync(fullTicketPath)) {
+        fs.unlinkSync(fullTicketPath);
+      }
+    }
+
+    // Eliminar el registro del pago de cuota
+    await db.query('DELETE FROM debt_payments WHERE id = ?', [id]);
+
+    // Recalcular installments_paid para la deuda
+    const remainingPayments = await db.query('SELECT COUNT(*) as count FROM debt_payments WHERE debt_id = ?', [payment.debt_id]);
+    const nextCount = remainingPayments[0].count;
+    await db.query('UPDATE debts SET installments_paid = ? WHERE id = ?', [nextCount, payment.debt_id]);
+
+    res.json({ message: 'Pago de cuota revertido con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al revertir el pago de la cuota.' });
   }
 });
 

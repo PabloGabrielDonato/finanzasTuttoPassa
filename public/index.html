@@ -83,6 +83,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
                     Servicios
                 </button>
+                <button class="nav-item" data-view="debts">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                    Deudas
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -449,6 +453,92 @@
                 </div>
             </section>
 
+            <!-- CONTENIDO DE LA VISTA: DEUDAS -->
+            <section id="view-debts" class="content-view hide">
+                <!-- Tarjetas de Métricas Rápidas -->
+                <div class="metrics-grid" style="margin-bottom: 2rem;">
+                    <div class="metric-card card-expense">
+                        <div class="metric-info">
+                            <span>Deudas Restantes</span>
+                            <h3 id="metric-debts-remaining">$0.00</h3>
+                        </div>
+                        <div class="metric-icon">💸</div>
+                    </div>
+                    <div class="metric-card card-balance">
+                        <div class="metric-info">
+                            <span>Cuotas Pendientes</span>
+                            <h3 id="metric-installments-remaining">0</h3>
+                        </div>
+                        <div class="metric-icon">📅</div>
+                    </div>
+                    <div class="metric-card card-income">
+                        <div class="metric-info">
+                            <span>Total Pagado</span>
+                            <h3 id="metric-debts-paid">$0.00</h3>
+                        </div>
+                        <div class="metric-icon">✓</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <!-- Registrar Deuda -->
+                    <div class="card-panel">
+                        <div class="panel-header">
+                            <h3>Nueva Deuda</h3>
+                        </div>
+                        <form id="debt-form">
+                            <div class="form-group">
+                                <label for="db-name">Nombre / Concepto de Deuda</label>
+                                <input type="text" id="db-name" placeholder="Ej: Préstamo Banco Nación, Compra Cafetera..." required>
+                            </div>
+                            <div class="form-group">
+                                <label for="db-total-amount">Monto Total ($)</label>
+                                <input type="number" step="0.01" id="db-total-amount" placeholder="0.00" required min="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label for="db-installments">Cantidad de Cuotas</label>
+                                <input type="number" id="db-installments" placeholder="Ej: 12, 24..." required min="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="db-due-day">Día de Vencimiento Mensual (1-31)</label>
+                                <input type="number" id="db-due-day" placeholder="Ej: 10" required min="1" max="31" value="10">
+                            </div>
+                            <div class="form-group">
+                                <label for="db-installment-amount">Dinero por Cuota ($)</label>
+                                <input type="number" step="0.01" id="db-installment-amount" placeholder="0.00" required min="0.01">
+                            </div>
+                            <button type="submit" class="btn-primary btn-block">Registrar Deuda</button>
+                        </form>
+                    </div>
+
+                    <!-- Listado de Deudas -->
+                    <div class="card-panel" style="flex: 2;">
+                        <div class="panel-header">
+                            <h3>Control de Deudas y Cuotas</h3>
+                            <span>Seguimiento de financiamientos</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Deuda</th>
+                                        <th>Monto Total</th>
+                                        <th>Día Vcto.</th>
+                                        <th>Cuotas Pagadas</th>
+                                        <th>Valor Cuota</th>
+                                        <th>Restante</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="debts-tbody">
+                                    <!-- Filas dinámicas -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -501,7 +591,74 @@
         </div>
     </div>
 
+    <!-- MODAL DE PAGO DE CUOTA -->
+    <div id="debt-pay-modal" class="modal-overlay hide">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Registrar Pago de Cuota</h3>
+                <button class="modal-close-btn" id="close-debt-pay-btn">&times;</button>
+            </div>
+            <form id="debt-pay-form" enctype="multipart/form-data">
+                <input type="hidden" id="dp-debt-id">
+                
+                <div class="form-group">
+                    <label>Deuda</label>
+                    <input type="text" id="dp-debt-name" readonly style="background-color: var(--border-color); cursor: not-allowed;">
+                </div>
+
+                <div class="form-group">
+                    <label>Monto de la Cuota</label>
+                    <input type="text" id="dp-debt-amount" readonly style="background-color: var(--border-color); cursor: not-allowed;">
+                </div>
+
+                <div class="form-group">
+                    <label for="dp-payment-date">Fecha de Pago</label>
+                    <input type="date" id="dp-payment-date" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="dp-ticket">Comprobante de Pago (Opcional)</label>
+                    <input type="file" id="dp-ticket" accept="image/*,application/pdf">
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" id="cancel-debt-pay-btn">Cancelar</button>
+                    <button type="submit" class="btn-primary">Confirmar Pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DE HISTORIAL DE PAGOS DE DEUDAS -->
+    <div id="debt-history-modal" class="modal-overlay hide">
+        <div class="modal-card" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3 id="debt-history-title">Historial de Cuotas</h3>
+                <button class="modal-close-btn" id="close-debt-history-btn">&times;</button>
+            </div>
+            <div class="table-responsive" style="margin-top: 1rem; max-height: 400px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nº Cuota</th>
+                            <th>Monto</th>
+                            <th>Fecha Pago</th>
+                            <th>Comprobante</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="debt-history-tbody">
+                        <!-- Carga dinámica -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="close-debt-history-footer-btn">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- App Script -->
-    <script src="js/app.js?v=1.0.1"></script>
+    <script src="js/app.js?v=1.0.2"></script>
 </body>
 </html>
