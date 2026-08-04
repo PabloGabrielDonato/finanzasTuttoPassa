@@ -399,9 +399,9 @@ async function seedEmployees() {
     if (count === 0) {
       console.log('Sembrando empleados por defecto (Luca, Thiago, Pablo)...');
       const empsToInsert = [
-        { name: 'Luca', base_salary: 150000.00, is_partner: 1 },
-        { name: 'Thiago', base_salary: 150000.00, is_partner: 1 },
-        { name: 'Pablo', base_salary: 150000.00, is_partner: 1 }
+        { name: 'Luca', base_salary: 1200000.00, is_partner: 1 },
+        { name: 'Thiago', base_salary: 1200000.00, is_partner: 1 },
+        { name: 'Pablo', base_salary: 1200000.00, is_partner: 1 }
       ];
 
       for (const e of empsToInsert) {

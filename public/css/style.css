@@ -905,3 +905,18 @@ input[type="file"] {
     white-space: nowrap;
 }
 
+/* SweetAlert2 Premium Custom Styling */
+.premium-swal-popup {
+    font-family: 'Outfit', sans-serif !important;
+    border-radius: 16px !important;
+    padding: 2.2rem 1.5rem !important;
+}
+
+.premium-swal-button {
+    font-family: 'Outfit', sans-serif !important;
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+    padding: 10px 24px !important;
+    font-size: 0.95rem !important;
+}
+

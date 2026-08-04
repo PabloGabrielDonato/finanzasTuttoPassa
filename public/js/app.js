@@ -1,3 +1,77 @@
+// Helpers para alertas agradables con SweetAlert2
+const Alert = {
+    success(message, title = '¡Éxito!') {
+        return Swal.fire({
+            title: title,
+            text: message,
+            icon: 'success',
+            confirmButtonColor: '#d97706',
+            confirmButtonText: 'Aceptar',
+            customClass: {
+                popup: 'premium-swal-popup',
+                confirmButton: 'premium-swal-button'
+            }
+        });
+    },
+    error(message, title = 'Error') {
+        return Swal.fire({
+            title: title,
+            text: message,
+            icon: 'error',
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: 'Cerrar',
+            customClass: {
+                popup: 'premium-swal-popup',
+                confirmButton: 'premium-swal-button'
+            }
+        });
+    },
+    warning(message, title = 'Atención') {
+        return Swal.fire({
+            title: title,
+            text: message,
+            icon: 'warning',
+            confirmButtonColor: '#d97706',
+            confirmButtonText: 'Aceptar',
+            customClass: {
+                popup: 'premium-swal-popup',
+                confirmButton: 'premium-swal-button'
+            }
+        });
+    },
+    info(message, title = 'Información') {
+        return Swal.fire({
+            title: title,
+            text: message,
+            icon: 'info',
+            confirmButtonColor: '#d97706',
+            confirmButtonText: 'Aceptar',
+            customClass: {
+                popup: 'premium-swal-popup',
+                confirmButton: 'premium-swal-button'
+            }
+        });
+    },
+    async confirm(message, title = '¿Estás seguro?', confirmText = 'Sí, eliminar', cancelText = 'Cancelar') {
+        const result = await Swal.fire({
+            title: title,
+            text: message,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: confirmText,
+            cancelButtonText: cancelText,
+            customClass: {
+                popup: 'premium-swal-popup',
+                confirmButton: 'premium-swal-button',
+                cancelButton: 'premium-swal-button'
+            }
+        });
+        return result.isConfirmed;
+    }
+};
+
 // Configuración y Estado Global
 const API_URL = window.location.origin;
 let state = {
@@ -495,7 +569,7 @@ async function handleSaveTransaction(e) {
     const employee_id = document.getElementById('tx-employee').value;
 
     if (!amount || amount <= 0 || !date || !category) {
-        alert('Por favor complete todos los datos requeridos.');
+        Alert.warning('Por favor complete todos los datos requeridos.');
         return;
     }
 
@@ -524,13 +598,13 @@ async function handleSaveTransaction(e) {
         closeModal();
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
 // --- ELIMINAR TRANSACCIÓN ---
 async function handleDeleteTransaction(id) {
-    if (!confirm('¿Estás seguro de que quieres eliminar este registro financiero?')) return;
+    if (!await Alert.confirm('¿Estás seguro de que quieres eliminar este registro financiero?')) return;
 
     try {
         const response = await fetch(`${API_URL}/api/transactions/${id}`, {
@@ -547,7 +621,7 @@ async function handleDeleteTransaction(id) {
 
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 window.handleDeleteTransaction = handleDeleteTransaction;
@@ -901,7 +975,7 @@ async function handleSaveCategory(e) {
     const type = document.getElementById('cat-type').value;
 
     if (!name || !type) {
-        alert('Por favor complete todos los datos requeridos.');
+        Alert.warning('Por favor complete todos los datos requeridos.');
         return;
     }
 
@@ -925,12 +999,12 @@ async function handleSaveCategory(e) {
         document.getElementById('cat-type').value = '';
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
 async function handleDeleteCategory(id) {
-    if (!confirm('¿Estás seguro de que deseas eliminar esta categoría? Las transacciones existentes mantendrán el nombre de la categoría, pero no podrás volver a seleccionarla.')) return;
+    if (!await Alert.confirm('¿Estás seguro de que deseas eliminar esta categoría? Las transacciones existentes mantendrán el nombre de la categoría, pero no podrás volver a seleccionarla.')) return;
 
     try {
         const response = await fetch(`${API_URL}/api/categories/${id}`, {
@@ -947,7 +1021,7 @@ async function handleDeleteCategory(id) {
 
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 window.handleDeleteCategory = handleDeleteCategory;
@@ -1037,7 +1111,7 @@ async function handleSaveEmployee(e) {
     const is_partner = document.getElementById('emp-partner').checked;
 
     if (!name || isNaN(base_salary)) {
-        alert('Por favor complete todos los campos.');
+        Alert.warning('Por favor complete todos los campos.');
         return;
     }
 
@@ -1063,12 +1137,12 @@ async function handleSaveEmployee(e) {
         cancelEditEmployee();
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
 async function handleDeleteEmployee(id) {
-    if (!confirm('¿Estás seguro de que deseas eliminar este empleado? Sus transacciones no se borrarán, pero dejará de listarse en el personal activo.')) return;
+    if (!await Alert.confirm('¿Estás seguro de que deseas eliminar este empleado? Sus transacciones no se borrarán, pero dejará de listarse en el personal activo.')) return;
 
     try {
         const response = await fetch(`${API_URL}/api/employees/${id}`, {
@@ -1085,7 +1159,7 @@ async function handleDeleteEmployee(id) {
 
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 window.handleDeleteEmployee = handleDeleteEmployee;
@@ -1248,7 +1322,7 @@ async function handleSaveServiceType(e) {
         nameEl.value = '';
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
@@ -1288,12 +1362,12 @@ async function handleSaveServicePayment(e) {
 
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
 async function handleDeleteServiceType(id) {
-    if (!confirm('¿Estás seguro de que deseas eliminar este tipo de servicio? Se eliminarán todos los registros de pago y comprobantes asociados de forma permanente.')) return;
+    if (!await Alert.confirm('¿Estás seguro de que deseas eliminar este tipo de servicio? Se eliminarán todos los registros de pago y comprobantes asociados de forma permanente.')) return;
 
     try {
         const response = await fetch(`${API_URL}/api/services/${id}`, {
@@ -1307,12 +1381,12 @@ async function handleDeleteServiceType(id) {
 
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
 async function handleDeleteServicePayment(id) {
-    if (!confirm('¿Estás seguro de que deseas eliminar este pago? Se borrarán de forma permanente los archivos adjuntos y también el egreso registrado en las transacciones generales.')) return;
+    if (!await Alert.confirm('¿Estás seguro de que deseas eliminar este pago? Se borrarán de forma permanente los archivos adjuntos y también el egreso registrado en las transacciones generales.')) return;
 
     try {
         const response = await fetch(`${API_URL}/api/service-payments/${id}`, {
@@ -1326,7 +1400,7 @@ async function handleDeleteServicePayment(id) {
 
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
@@ -1429,7 +1503,7 @@ async function handleSaveDebt(e) {
 
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
@@ -1473,7 +1547,7 @@ async function handleConfirmPayDebtInstallment(e) {
         form.reset();
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
@@ -1528,7 +1602,7 @@ async function openDebtHistoryModal(id, name) {
 }
 
 async function handleRevertDebtPayment(paymentId, debtId, debtName) {
-    if (!confirm('¿Estás seguro de que deseas revertir el pago de esta cuota? Se eliminará permanentemente la transacción de egreso general y el comprobante asociado.')) return;
+    if (!await Alert.confirm('¿Estás seguro de que deseas revertir el pago de esta cuota? Se eliminará permanentemente la transacción de egreso general y el comprobante asociado.')) return;
 
     try {
         const response = await fetch(`${API_URL}/api/debt-payments/${paymentId}`, {
@@ -1545,12 +1619,12 @@ async function handleRevertDebtPayment(paymentId, debtId, debtName) {
         // Recargar el modal de historial
         await openDebtHistoryModal(debtId, debtName);
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
 async function handleDeleteDebt(id) {
-    if (!confirm('¿Estás seguro de que deseas eliminar esta deuda? Las transacciones asociadas a cuotas pagadas previamente no se borrarán del historial.')) return;
+    if (!await Alert.confirm('¿Estás seguro de que deseas eliminar esta deuda? Las transacciones asociadas a cuotas pagadas previamente no se borrarán del historial.')) return;
 
     try {
         const response = await fetch(`${API_URL}/api/debts/${id}`, {
@@ -1564,7 +1638,7 @@ async function handleDeleteDebt(id) {
 
         loadData();
     } catch (err) {
-        alert(err.message);
+        Alert.error(err.message);
     }
 }
 
