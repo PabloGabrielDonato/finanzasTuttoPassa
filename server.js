@@ -33,7 +33,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// Interfaz unificada de Base de Datos para soportar MySQL y SQLite
+// Interfaz unificada de Base de Datos para MySQL y SQLite (Desarrollo local)
 let db = {
   isMySQL: false,
   connection: null,
@@ -42,23 +42,24 @@ let db = {
   query(sql, params = []) {
     return new Promise((resolve, reject) => {
       if (this.isMySQL) {
-        // En mysql2, query toma params y devuelve [rows, fields]
+        if (!this.connection) return reject(new Error('Base de datos MySQL no inicializada.'));
         this.connection.query(sql, params, (err, results) => {
           if (err) return reject(err);
           resolve(results);
         });
       } else {
-        // En sqlite3, usamos run para write o all para read
-        const isSelect = sql.trim().toLowerCase().startsWith('select');
+        if (!this.sqliteDb) return reject(new Error('Base de datos SQLite no inicializada.'));
+        const sqliteSql = mysqlToSqlite(sql);
+        const cleanSql = sqliteSql.trim();
+        const isSelect = cleanSql.toLowerCase().startsWith('select');
         if (isSelect) {
-          this.sqliteDb.all(sql, params, (err, rows) => {
+          this.sqliteDb.all(cleanSql, params, (err, rows) => {
             if (err) return reject(err);
             resolve(rows);
           });
         } else {
-          this.sqliteDb.run(sql, params, function(err) {
+          this.sqliteDb.run(cleanSql, params, function(err) {
             if (err) return reject(err);
-            // Simular comportamiento de mysql (insertId, affectedRows)
             resolve({ insertId: this.lastID, affectedRows: this.changes });
           });
         }
@@ -67,19 +68,34 @@ let db = {
   }
 };
 
-// Inicializar Base de Datos
+function mysqlToSqlite(sql) {
+  return sql
+    .replace(/INT AUTO_INCREMENT PRIMARY KEY/gi, 'INTEGER PRIMARY KEY AUTOINCREMENT')
+    .replace(/DECIMAL\(\d+,\s*\d+\)/gi, 'REAL')
+    .replace(/VARCHAR\(\d+\)/gi, 'TEXT')
+    .replace(/TIMESTAMP DEFAULT CURRENT_TIMESTAMP/gi, 'DATETIME DEFAULT CURRENT_TIMESTAMP')
+    .replace(/TIMESTAMP NULL/gi, 'DATETIME')
+    .replace(/TIMESTAMP/gi, 'DATETIME')
+    .replace(/BOOLEAN/gi, 'INTEGER');
+}
+
+// Inicializar Base de Datos y ejecutar migraciones automáticas
 async function initDatabase() {
-  const useMySQL = !!(process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME);
-  
+  const host = process.env.DB_HOST;
+  const user = process.env.DB_USER;
+  const database = process.env.DB_NAME;
+
+  const useMySQL = !!(host && user && database);
+
   if (useMySQL) {
     console.log('Intentando conectar a base de datos MySQL...');
     try {
       const mysql = require('mysql2');
       const connection = mysql.createConnection({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
+        host: host,
+        user: user,
         password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
+        database: database,
         port: process.env.DB_PORT || 3306,
         multipleStatements: true
       });
@@ -94,351 +110,22 @@ async function initDatabase() {
       db.isMySQL = true;
       db.connection = connection;
       console.log('Conectado a MySQL con éxito.');
-
-      // Crear Tablas
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS users (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          username VARCHAR(50) NOT NULL UNIQUE,
-          password VARCHAR(255) NOT NULL,
-          name VARCHAR(100) NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS transactions (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          user_id INT NOT NULL,
-          type VARCHAR(10) NOT NULL,
-          amount DECIMAL(12, 2) NOT NULL,
-          category VARCHAR(100) NOT NULL,
-          description TEXT,
-          date DATE NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-      `);
-
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS categories (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          type VARCHAR(10) NOT NULL,
-          UNIQUE(name, type)
-        )
-      `);
-
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS employees (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(100) NOT NULL UNIQUE,
-          base_salary DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
-          is_partner BOOLEAN NOT NULL DEFAULT FALSE,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS service_types (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(100) NOT NULL UNIQUE,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS service_payments (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          service_type_id INT NOT NULL,
-          transaction_id INT NULL,
-          month VARCHAR(7) NOT NULL,
-          amount DECIMAL(12, 2) NOT NULL,
-          payment_date DATE NOT NULL,
-          ticket_path VARCHAR(255) NULL,
-          invoice_path VARCHAR(255) NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (service_type_id) REFERENCES service_types(id) ON DELETE CASCADE,
-          FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
-        )
-      `);
-
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS debts (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          total_amount DECIMAL(12, 2) NOT NULL,
-          installments INT NOT NULL,
-          installment_amount DECIMAL(12, 2) NOT NULL,
-          installments_paid INT NOT NULL DEFAULT 0,
-          due_day INT NOT NULL DEFAULT 10,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS debt_payments (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          debt_id INT NOT NULL,
-          transaction_id INT NULL,
-          installment_number INT NOT NULL,
-          amount DECIMAL(12, 2) NOT NULL,
-          payment_date DATE NOT NULL,
-          ticket_path VARCHAR(255) NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (debt_id) REFERENCES debts(id) ON DELETE CASCADE,
-          FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
-        )
-      `);
-
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS partner_contributions (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          partner_name VARCHAR(100) NOT NULL,
-          amount DECIMAL(12, 2) NOT NULL,
-          currency VARCHAR(50) NOT NULL,
-          date DATE NOT NULL,
-          reason TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      try {
-        await db.query('ALTER TABLE debts ADD COLUMN due_day INT NOT NULL DEFAULT 10');
-      } catch (e) {
-        // Ignorar si la columna ya existe
-      }
-
-      try {
-        await db.query('ALTER TABLE transactions ADD COLUMN employee_id INT NULL');
-        await db.query('ALTER TABLE transactions ADD FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL');
-      } catch (e) {
-        // Ignorar si la columna ya existe
-      }
-
     } catch (err) {
-      console.error('Error al conectar a MySQL, se usará SQLite local:', err.message);
-      setupSQLite();
+      console.error('Error al conectar a MySQL:', err.message);
+      process.exit(1);
     }
   } else {
-    console.log('No se configuró MySQL en .env. Usando SQLite local por defecto.');
-    setupSQLite();
+    console.log('No se configuró MySQL en el archivo .env local. Usando SQLite para pruebas locales...');
+    const sqlite3 = require('sqlite3').verbose();
+    const path = require('path');
+    const dbPath = path.join(__dirname, 'database.sqlite');
+    db.isMySQL = false;
+    db.sqliteDb = new sqlite3.Database(dbPath);
   }
 
-  // Sembrar usuarios, categorías y empleados iniciales si no existen
-  await seedUsers();
-  await seedCategories();
-  await seedEmployees();
-}
-
-function setupSQLite() {
-  const sqlite3 = require('sqlite3').verbose();
-  const dbPath = path.join(__dirname, 'database.sqlite');
-  console.log(`Inicializando base de datos SQLite en: ${dbPath}`);
-  
-  db.isMySQL = false;
-  db.sqliteDb = new sqlite3.Database(dbPath);
-
-  // Crear tablas en SQLite
-  db.sqliteDb.serialize(() => {
-    db.sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        password TEXT NOT NULL,
-        name TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        amount REAL NOT NULL,
-        category TEXT NOT NULL,
-        description TEXT,
-        date TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )
-    `);
-
-    db.sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS categories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        UNIQUE(name, type)
-      )
-    `);
-
-    db.sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS employees (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE,
-        base_salary REAL NOT NULL DEFAULT 0.0,
-        is_partner INTEGER NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS service_types (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS service_payments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        service_type_id INTEGER NOT NULL,
-        transaction_id INTEGER,
-        month TEXT NOT NULL,
-        amount REAL NOT NULL,
-        payment_date TEXT NOT NULL,
-        ticket_path TEXT,
-        invoice_path TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (service_type_id) REFERENCES service_types(id) ON DELETE CASCADE,
-        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
-      )
-    `);
-
-    db.sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS debts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        total_amount REAL NOT NULL,
-        installments INTEGER NOT NULL,
-        installment_amount REAL NOT NULL,
-        installments_paid INTEGER NOT NULL DEFAULT 0,
-        due_day INTEGER NOT NULL DEFAULT 10,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS debt_payments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        debt_id INTEGER NOT NULL,
-        transaction_id INTEGER,
-        installment_number INTEGER NOT NULL,
-        amount REAL NOT NULL,
-        payment_date TEXT NOT NULL,
-        ticket_path TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (debt_id) REFERENCES debts(id) ON DELETE CASCADE,
-        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
-      )
-    `);
-
-    db.sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS partner_contributions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        partner_name TEXT NOT NULL,
-        amount REAL NOT NULL,
-        currency TEXT NOT NULL,
-        date TEXT NOT NULL,
-        reason TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.sqliteDb.run('ALTER TABLE debts ADD COLUMN due_day INTEGER DEFAULT 10', (err) => {
-      // Ignorar si la columna ya existe
-    });
-
-    db.sqliteDb.run('ALTER TABLE transactions ADD COLUMN employee_id INTEGER', (err) => {
-      // Ignorar si la columna ya existe
-    });
-  });
-}
-
-async function seedUsers() {
-  try {
-    const existingUsers = await db.query('SELECT COUNT(*) as count FROM users');
-    const count = db.isMySQL ? existingUsers[0].count : existingUsers[0].count;
-
-    if (count === 0) {
-      console.log('Sembrando usuarios por defecto (Luca, Thiago, Pablo)...');
-      const usersToInsert = [
-        { username: 'luca', name: 'Luca', pass: 'luca123' },
-        { username: 'thiago', name: 'Thiago', pass: 'thiago123' },
-        { username: 'pablo', name: 'Pablo', pass: 'pablo123' }
-      ];
-
-      for (const u of usersToInsert) {
-        const hashedPassword = await bcrypt.hash(u.pass, 10);
-        await db.query(
-          'INSERT INTO users (username, password, name) VALUES (?, ?, ?)',
-          [u.username, hashedPassword, u.name]
-        );
-      }
-      console.log('Usuarios iniciales creados.');
-    }
-  } catch (err) {
-    console.error('Error al sembrar usuarios:', err);
-  }
-}
-
-async function seedCategories() {
-  try {
-    const existingCats = await db.query('SELECT COUNT(*) as count FROM categories');
-    const count = db.isMySQL ? existingCats[0].count : existingCats[0].count;
-
-    if (count === 0) {
-      console.log('Sembrando categorías por defecto...');
-      const catsToInsert = [
-        { name: 'Ventas Cafetería/Panadería', type: 'income' },
-        { name: 'Otros Ingresos', type: 'income' },
-        { name: 'Materia Prima / Harina / Café', type: 'expense' },
-        { name: 'Sueldos y Retiros', type: 'expense' },
-        { name: 'Servicios (Luz, Agua, Gas, Internet)', type: 'expense' },
-        { name: 'Mantenimiento y Limpieza', type: 'expense' },
-        { name: 'Otros Gastos', type: 'expense' }
-      ];
-
-      for (const c of catsToInsert) {
-        await db.query(
-          'INSERT INTO categories (name, type) VALUES (?, ?)',
-          [c.name, c.type]
-        );
-      }
-      console.log('Categorías iniciales creadas.');
-    }
-  } catch (err) {
-    console.error('Error al sembrar categorías:', err);
-  }
-}
-
-async function seedEmployees() {
-  try {
-    const existingEmp = await db.query('SELECT COUNT(*) as count FROM employees');
-    const count = db.isMySQL ? existingEmp[0].count : existingEmp[0].count;
-
-    if (count === 0) {
-      console.log('Sembrando empleados por defecto (Luca, Thiago, Pablo)...');
-      const empsToInsert = [
-        { name: 'Luca', base_salary: 1200000.00, is_partner: 1 },
-        { name: 'Thiago', base_salary: 1200000.00, is_partner: 1 },
-        { name: 'Pablo', base_salary: 1200000.00, is_partner: 1 }
-      ];
-
-      for (const e of empsToInsert) {
-        await db.query(
-          'INSERT INTO employees (name, base_salary, is_partner) VALUES (?, ?, ?)',
-          [e.name, e.base_salary, e.is_partner]
-        );
-      }
-      console.log('Empleados iniciales creados.');
-    }
-  } catch (err) {
-    console.error('Error al sembrar empleados:', err);
-  }
+  // Ejecutar migraciones automáticas estilo Laravel
+  const runMigrations = require('./migrate');
+  await runMigrations();
 }
 
 // Middleware de Autenticación JWT
