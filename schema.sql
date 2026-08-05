@@ -50,5 +50,15 @@ CREATE TABLE IF NOT EXISTS debts (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS partner_contributions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    partner_name VARCHAR(100) NOT NULL,
+    amount DECIMAL(12, 2) NOT NULL,
+    currency VARCHAR(50) NOT NULL,
+    date DATE NOT NULL,
+    reason TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Los usuarios por defecto (Luca, Thiago, Pablo) se inicializarán automáticamente desde el servidor backend
 -- con contraseñas seguras iniciales equivalentes a sus nombres en minúscula (ej: password "luca" para el usuario "luca").

@@ -92,6 +92,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
                     Deudas
                 </button>
+                <button class="nav-item" data-view="contributions">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                    Aportes
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -543,6 +547,132 @@
                                     </tr>
                                 </thead>
                                 <tbody id="debts-tbody">
+                                    <!-- Filas dinámicas -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CONTENIDO DE LA VISTA: APORTES -->
+            <section id="view-contributions" class="content-view hide">
+                <!-- Resumen de Aportes -->
+                <div class="card-panel" style="margin-bottom: 2rem;">
+                    <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 300px;">
+                            <div class="panel-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                                <h3 style="color: var(--text-muted); font-size: 0.875rem; text-transform: uppercase; tracking-wider: 0.05em;">Aportes en Pesos</h3>
+                            </div>
+                            <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem;">
+                                <div class="metric-card card-balance" style="padding: 1rem;">
+                                    <div class="metric-info">
+                                        <span style="font-size: 0.75rem;">Total Thiago</span>
+                                        <h4 id="total-thiago-pesos" style="font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem;">$0.00</h4>
+                                    </div>
+                                </div>
+                                <div class="metric-card card-balance" style="padding: 1rem;">
+                                    <div class="metric-info">
+                                        <span style="font-size: 0.75rem;">Total Pablo</span>
+                                        <h4 id="total-pablo-pesos" style="font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem;">$0.00</h4>
+                                    </div>
+                                </div>
+                                <div class="metric-card card-balance" style="padding: 1rem;">
+                                    <div class="metric-info">
+                                        <span style="font-size: 0.75rem;">Total Luca</span>
+                                        <h4 id="total-luca-pesos" style="font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem;">$0.00</h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="flex: 1; min-width: 300px;">
+                            <div class="panel-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                                <h3 style="color: var(--text-muted); font-size: 0.875rem; text-transform: uppercase; tracking-wider: 0.05em;">Aportes en Dólares</h3>
+                            </div>
+                            <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem;">
+                                <div class="metric-card card-income" style="padding: 1rem;">
+                                    <div class="metric-info">
+                                        <span style="font-size: 0.75rem;">Total Thiago</span>
+                                        <h4 id="total-thiago-dolar" style="font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem;">u$s0.00</h4>
+                                    </div>
+                                </div>
+                                <div class="metric-card card-income" style="padding: 1rem;">
+                                    <div class="metric-info">
+                                        <span style="font-size: 0.75rem;">Total Pablo</span>
+                                        <h4 id="total-pablo-dolar" style="font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem;">u$s0.00</h4>
+                                    </div>
+                                </div>
+                                <div class="metric-card card-income" style="padding: 1rem;">
+                                    <div class="metric-info">
+                                        <span style="font-size: 0.75rem;">Total Luca</span>
+                                        <h4 id="total-luca-dolar" style="font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem;">u$s0.00</h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid grid-form-table">
+                    <!-- Registrar Aporte -->
+                    <div class="card-panel">
+                        <div class="panel-header">
+                            <h3>Nuevo Aporte</h3>
+                        </div>
+                        <form id="contribution-form">
+                            <div class="form-group">
+                                <label for="contr-partner">Socio</label>
+                                <select id="contr-partner" required>
+                                    <option value="" disabled selected>Selecciona un socio</option>
+                                    <option value="Thiago">Thiago</option>
+                                    <option value="Pablo">Pablo</option>
+                                    <option value="Luca">Luca</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="contr-amount">Monto</label>
+                                <input type="number" step="0.01" id="contr-amount" placeholder="0.00" required min="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label for="contr-currency">Moneda</label>
+                                <select id="contr-currency" required>
+                                    <option value="" disabled selected>Selecciona divisa</option>
+                                    <option value="Pesos">Pesos</option>
+                                    <option value="Dolar">Dolar</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="contr-date">Fecha</label>
+                                <input type="date" id="contr-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="contr-reason">Razón / Concepto</label>
+                                <input type="text" id="contr-reason" placeholder="Ej: Seña local, seña franquicia..." required>
+                            </div>
+                            <button type="submit" class="btn-primary btn-block">Registrar Aporte</button>
+                        </form>
+                    </div>
+
+                    <!-- Listado de Aportes -->
+                    <div class="card-panel" style="flex: 2;">
+                        <div class="panel-header">
+                            <h3>Historial de Aportes</h3>
+                            <span>Seguimiento de inversiones de socios</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Socio</th>
+                                        <th>Monto</th>
+                                        <th>Moneda</th>
+                                        <th>Fecha</th>
+                                        <th>Razón</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="contributions-tbody">
                                     <!-- Filas dinámicas -->
                                 </tbody>
                             </table>

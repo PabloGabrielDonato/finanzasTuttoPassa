@@ -86,7 +86,8 @@ let state = {
     categoriesChart: null,
     serviceTypes: [],
     servicePayments: [],
-    debts: []
+    debts: [],
+    contributions: []
 };
 
 // --- INICIALIZACIÓN ---
@@ -104,6 +105,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const dpDate = document.getElementById('dp-payment-date');
     if (dpDate) dpDate.value = today.toISOString().slice(0, 10);
+
+    const contrDate = document.getElementById('contr-date');
+    if (contrDate) contrDate.value = today.toISOString().slice(0, 10);
 
     initEventListeners();
     checkAuth();
@@ -198,6 +202,10 @@ function initEventListeners() {
 
     // Deudas Formulario
     document.getElementById('debt-form').addEventListener('submit', handleSaveDebt);
+
+    // Aportes Formulario
+    const contrForm = document.getElementById('contribution-form');
+    if (contrForm) contrForm.addEventListener('submit', handleSaveContribution);
     
     // Auto-cálculo de cuota en Deudas
     const calculateInstallmentAmount = () => {
@@ -323,7 +331,8 @@ function switchView(viewName) {
         categories: 'Gestión de Categorías',
         employees: 'Gestión de Empleados',
         services: 'Gestión de Servicios y Comprobantes',
-        debts: 'Control de Deudas y Financiación'
+        debts: 'Control de Deudas y Financiación',
+        contributions: 'Aportes de Socios'
     };
     document.getElementById('view-title').textContent = titles[viewName] || 'Tutto Passa';
 
@@ -338,6 +347,8 @@ function switchView(viewName) {
         renderServicePaymentsTable();
     } else if (viewName === 'debts') {
         renderDebtsTable();
+    } else if (viewName === 'contributions') {
+        renderContributionsTable();
     }
 }
 
@@ -399,6 +410,17 @@ async function loadData() {
         if (debtsResponse.ok && debtsResponse.headers.get('content-type')?.includes('application/json')) {
             state.debts = await debtsResponse.json();
             updateDebtsMetrics();
+        }
+
+        // 6.5 Cargar Aportes de Socios
+        const contrsResponse = await fetch(`${API_URL}/api/contributions`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (contrsResponse.ok && contrsResponse.headers.get('content-type')?.includes('application/json')) {
+            state.contributions = await contrsResponse.json();
+            if (state.currentView === 'contributions') {
+                renderContributionsTable();
+            }
         }
 
         // 7. Cargar Transacciones
@@ -1651,3 +1673,112 @@ window.handleDeleteDebt = handleDeleteDebt;
 window.updateDebtsMetrics = updateDebtsMetrics;
 window.startEditEmployee = startEditEmployee;
 window.cancelEditEmployee = cancelEditEmployee;
+window.handleDeleteContribution = handleDeleteContribution;
+
+// --- APORTES DE SOCIOS ---
+function renderContributionsTable() {
+    const tbody = document.getElementById('contributions-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+
+    // Inicializar totales
+    const totals = {
+        Thiago: { Pesos: 0, Dolar: 0 },
+        Pablo: { Pesos: 0, Dolar: 0 },
+        Luca: { Pesos: 0, Dolar: 0 }
+    };
+
+    state.contributions.forEach(contr => {
+        const partner = contr.partner_name;
+        const currency = contr.currency; // 'Pesos' o 'Dolar'
+        const amt = parseFloat(contr.amount) || 0;
+
+        if (totals[partner] && totals[partner][currency] !== undefined) {
+            totals[partner][currency] += amt;
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${contr.partner_name}</strong></td>
+            <td>${formatCurrency(contr.amount, contr.currency)}</td>
+            <td><span class="badge ${contr.currency === 'Dolar' ? 'badge-income' : 'badge-balance'}">${contr.currency}</span></td>
+            <td>${contr.date}</td>
+            <td>${contr.reason || '-'}</td>
+            <td>
+                <button class="btn-danger-outline btn-sm" onclick="handleDeleteContribution(${contr.id})">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    document.getElementById('total-thiago-pesos').textContent = formatCurrency(totals.Thiago.Pesos, 'Pesos');
+    document.getElementById('total-pablo-pesos').textContent = formatCurrency(totals.Pablo.Pesos, 'Pesos');
+    document.getElementById('total-luca-pesos').textContent = formatCurrency(totals.Luca.Pesos, 'Pesos');
+
+    document.getElementById('total-thiago-dolar').textContent = formatCurrency(totals.Thiago.Dolar, 'Dolar');
+    document.getElementById('total-pablo-dolar').textContent = formatCurrency(totals.Pablo.Dolar, 'Dolar');
+    document.getElementById('total-luca-dolar').textContent = formatCurrency(totals.Luca.Dolar, 'Dolar');
+}
+
+function formatCurrency(amount, currency) {
+    const value = parseFloat(amount) || 0;
+    if (currency === 'Dolar') {
+        return 'u$s ' + value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    } else {
+        return '$ ' + value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+}
+
+async function handleSaveContribution(e) {
+    e.preventDefault();
+    const partner_name = document.getElementById('contr-partner').value;
+    const amount = parseFloat(document.getElementById('contr-amount').value);
+    const currency = document.getElementById('contr-currency').value;
+    const date = document.getElementById('contr-date').value;
+    const reason = document.getElementById('contr-reason').value;
+
+    try {
+        const response = await fetch(`${API_URL}/api/contributions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: JSON.stringify({ partner_name, amount, currency, date, reason })
+        });
+
+        await safeResponseJSON(response, 'Error al guardar el aporte');
+
+        document.getElementById('contribution-form').reset();
+        
+        const today = new Date().toISOString().slice(0, 10);
+        document.getElementById('contr-date').value = today;
+
+        await loadData();
+        Alert.success('Aporte registrado correctamente.');
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+async function handleDeleteContribution(id) {
+    if (!await Alert.confirm('¿Estás seguro de que deseas eliminar este aporte?')) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/contributions/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            }
+        });
+
+        await safeResponseJSON(response, 'Error al eliminar el aporte');
+
+        await loadData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}

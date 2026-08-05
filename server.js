@@ -191,6 +191,18 @@ async function initDatabase() {
         )
       `);
 
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS partner_contributions (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          partner_name VARCHAR(100) NOT NULL,
+          amount DECIMAL(12, 2) NOT NULL,
+          currency VARCHAR(50) NOT NULL,
+          date DATE NOT NULL,
+          reason TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
       try {
         await db.query('ALTER TABLE debts ADD COLUMN due_day INT NOT NULL DEFAULT 10');
       } catch (e) {
@@ -321,6 +333,18 @@ function setupSQLite() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (debt_id) REFERENCES debts(id) ON DELETE CASCADE,
         FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
+      )
+    `);
+
+    db.sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS partner_contributions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        partner_name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        currency TEXT NOT NULL,
+        date TEXT NOT NULL,
+        reason TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -640,6 +664,59 @@ app.delete('/api/categories/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al eliminar la categoría.' });
+  }
+});
+
+// --- RUTAS DE APORTES DE SOCIOS ---
+
+// Obtener todos los aportes
+app.get('/api/contributions', authenticateToken, async (req, res) => {
+  try {
+    const contributions = await db.query('SELECT * FROM partner_contributions ORDER BY date DESC, id DESC');
+    res.json(contributions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener los aportes.' });
+  }
+});
+
+// Registrar aporte
+app.post('/api/contributions', authenticateToken, async (req, res) => {
+  const { partner_name, amount, currency, date, reason } = req.body;
+  if (!partner_name || !amount || !currency || !date) {
+    return res.status(400).json({ error: 'El socio, monto, divisa y fecha son obligatorios.' });
+  }
+  try {
+    const result = await db.query(
+      'INSERT INTO partner_contributions (partner_name, amount, currency, date, reason) VALUES (?, ?, ?, ?, ?)',
+      [partner_name.trim(), amount, currency.trim(), date, reason ? reason.trim() : null]
+    );
+    res.status(201).json({
+      message: 'Aporte registrado con éxito.',
+      contribution: {
+        id: result.insertId || null,
+        partner_name,
+        amount,
+        currency,
+        date,
+        reason
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al registrar el aporte.' });
+  }
+});
+
+// Eliminar aporte
+app.delete('/api/contributions/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.query('DELETE FROM partner_contributions WHERE id = ?', [id]);
+    res.json({ message: 'Aporte eliminado correctamente.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar el aporte.' });
   }
 });
 
