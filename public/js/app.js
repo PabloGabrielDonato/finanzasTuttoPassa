@@ -444,6 +444,7 @@ async function loadData() {
         });
         if (ccResponse.ok && ccResponse.headers.get('content-type')?.includes('application/json')) {
             state.creditCards = await ccResponse.json();
+            updateCreditCardsMetrics();
             if (state.currentView === 'credit-cards') {
                 renderCreditCardsTable();
             }
@@ -1738,6 +1739,29 @@ window.cancelEditEmployee = cancelEditEmployee;
 window.handleDeleteContribution = handleDeleteContribution;
 
 // --- TARJETAS DE CRÉDITO ---
+function updateCreditCardsMetrics() {
+    let totalRemaining = 0;
+    let pendingInstallments = 0;
+    let totalPaid = 0;
+
+    if (state.creditCards) {
+        state.creditCards.forEach(c => {
+            const remainingInstallments = Math.max(0, c.installments - c.installments_paid);
+            totalRemaining += remainingInstallments * c.installment_amount;
+            pendingInstallments += remainingInstallments;
+            totalPaid += c.installments_paid * c.installment_amount;
+        });
+    }
+
+    const remEl = document.getElementById('metric-cc-remaining');
+    const pendEl = document.getElementById('metric-cc-installments-remaining');
+    const paidEl = document.getElementById('metric-cc-paid');
+
+    if (remEl) remEl.textContent = totalRemaining.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+    if (pendEl) pendEl.textContent = pendingInstallments.toString();
+    if (paidEl) paidEl.textContent = totalPaid.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+}
+
 function renderCreditCardsTable() {
     const tbody = document.getElementById('credit-cards-tbody');
     if (!tbody) return;
