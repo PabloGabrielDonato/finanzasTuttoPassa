@@ -60,5 +60,27 @@ CREATE TABLE IF NOT EXISTS partner_contributions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS credit_cards (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    cardholder VARCHAR(100) NOT NULL,
+    total_amount DECIMAL(12, 2) NOT NULL,
+    installments INT NOT NULL,
+    installment_amount DECIMAL(12, 2) NOT NULL,
+    start_month VARCHAR(7) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS credit_card_payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    credit_card_id INT NOT NULL,
+    transaction_id INT NULL,
+    installment_number INT NOT NULL,
+    amount DECIMAL(12, 2) NOT NULL,
+    payment_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (credit_card_id) REFERENCES credit_cards(id) ON DELETE CASCADE,
+    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
+);
+
 -- Los usuarios por defecto (Luca, Thiago, Pablo) se inicializarán automáticamente desde el servidor backend
 -- con contraseñas seguras iniciales equivalentes a sus nombres en minúscula (ej: password "luca" para el usuario "luca").

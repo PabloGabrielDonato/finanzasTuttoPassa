@@ -354,6 +354,147 @@ app.delete('/api/categories/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// --- RUTAS DE CUOTAS DE TARJETA ---
+
+// Obtener todas las tarjetas (con conteo dinámico de cuotas pagadas)
+app.get('/api/credit-cards', authenticateToken, async (req, res) => {
+  try {
+    const cards = await db.query(`
+      SELECT c.*, COUNT(cp.id) as installments_paid
+      FROM credit_cards c
+      LEFT JOIN credit_card_payments cp ON c.id = cp.credit_card_id
+      GROUP BY c.id
+      ORDER BY c.created_at DESC
+    `);
+    res.json(cards);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al consultar tarjetas de crédito.' });
+  }
+});
+
+// Registrar nueva tarjeta
+app.post('/api/credit-cards', authenticateToken, async (req, res) => {
+  const { cardholder, total_amount, installments, start_month } = req.body;
+
+  if (!cardholder || !total_amount || !installments || !start_month) {
+    return res.status(400).json({ error: 'Todos los campos son obligatorios.' });
+  }
+
+  const numTotalAmount = parseFloat(total_amount);
+  const numInstallments = parseInt(installments);
+
+  if (isNaN(numTotalAmount) || numTotalAmount <= 0) {
+    return res.status(400).json({ error: 'El monto total debe ser mayor a cero.' });
+  }
+  if (isNaN(numInstallments) || numInstallments <= 0) {
+    return res.status(400).json({ error: 'La cantidad de cuotas debe ser mayor a cero.' });
+  }
+
+  const numInstallmentAmount = numTotalAmount / numInstallments;
+
+  try {
+    const result = await db.query(
+      'INSERT INTO credit_cards (cardholder, total_amount, installments, installment_amount, start_month) VALUES (?, ?, ?, ?, ?)',
+      [cardholder.trim(), numTotalAmount, numInstallments, numInstallmentAmount, start_month]
+    );
+
+    res.status(201).json({
+      message: 'Tarjeta registrada con éxito.',
+      credit_card: {
+        id: result.insertId,
+        cardholder: cardholder.trim(),
+        total_amount: numTotalAmount,
+        installments: numInstallments,
+        installment_amount: numInstallmentAmount,
+        start_month: start_month,
+        installments_paid: 0
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al registrar la tarjeta.' });
+  }
+});
+
+// Obtener historial de cuotas pagadas de una tarjeta
+app.get('/api/credit-cards/:id/payments', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const payments = await db.query('SELECT * FROM credit_card_payments WHERE credit_card_id = ? ORDER BY installment_number ASC', [id]);
+    res.json(payments);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al consultar historial de cuotas.' });
+  }
+});
+
+// Pagar la siguiente cuota de una tarjeta
+app.post('/api/credit-cards/:id/pay-installment', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { payment_date } = req.body;
+
+  if (!payment_date) {
+    return res.status(400).json({ error: 'La fecha de pago es obligatoria.' });
+  }
+
+  try {
+    const cards = await db.query('SELECT * FROM credit_cards WHERE id = ?', [id]);
+    if (cards.length === 0) {
+      return res.status(404).json({ error: 'Tarjeta no encontrada.' });
+    }
+    const card = cards[0];
+
+    const paidCountRows = await db.query('SELECT COUNT(*) as count FROM credit_card_payments WHERE credit_card_id = ?', [id]);
+    const paidCount = paidCountRows[0].count;
+
+    if (paidCount >= card.installments) {
+      return res.status(400).json({ error: 'Esta tarjeta ya está totalmente pagada.' });
+    }
+
+    const nextInstallmentNum = paidCount + 1;
+
+    // Crear transacción de egreso asociada
+    const category = 'Otros'; // Or 'Pago de Tarjeta' if added to categories
+    const description = `Cuota ${nextInstallmentNum}/${card.installments} - Tarjeta ${card.cardholder}`;
+    
+    const txResult = await db.query(
+      'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'expense', card.installment_amount, category, description, payment_date, null]
+    );
+    const transactionId = txResult.insertId;
+
+    // Crear registro de pago
+    await db.query(
+      'INSERT INTO credit_card_payments (credit_card_id, transaction_id, installment_number, amount, payment_date) VALUES (?, ?, ?, ?, ?)',
+      [id, transactionId, nextInstallmentNum, card.installment_amount, payment_date]
+    );
+
+    res.status(201).json({ message: 'Cuota de tarjeta pagada con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al registrar el pago de la cuota de la tarjeta.' });
+  }
+});
+
+// Eliminar tarjeta
+app.delete('/api/credit-cards/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const payments = await db.query('SELECT * FROM credit_card_payments WHERE credit_card_id = ?', [id]);
+    for (const p of payments) {
+      if (p.transaction_id) {
+        await db.query('DELETE FROM transactions WHERE id = ?', [p.transaction_id]);
+      }
+    }
+    await db.query('DELETE FROM credit_cards WHERE id = ?', [id]);
+    res.json({ message: 'Tarjeta eliminada correctamente.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar la tarjeta.' });
+  }
+});
+
 // --- RUTAS DE APORTES DE SOCIOS ---
 
 // Obtener todos los aportes

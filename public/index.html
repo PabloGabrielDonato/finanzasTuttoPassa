@@ -96,6 +96,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
                     Aportes
                 </button>
+                <button class="nav-item" data-view="credit-cards">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                    Tarjetas
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -681,6 +685,63 @@
                 </div>
             </section>
 
+            <!-- CONTENIDO DE LA VISTA: TARJETAS -->
+            <section id="view-credit-cards" class="content-view hide">
+                <div class="dashboard-grid grid-form-table">
+                    <!-- Registrar Tarjeta -->
+                    <div class="card-panel">
+                        <div class="panel-header">
+                            <h3>Nueva Compra en Tarjeta</h3>
+                        </div>
+                        <form id="credit-card-form">
+                            <div class="form-group">
+                                <label for="cc-cardholder">Titular de la Tarjeta</label>
+                                <input type="text" id="cc-cardholder" placeholder="Ej: Luca, Pablo..." required>
+                            </div>
+                            <div class="form-group">
+                                <label for="cc-total-amount">Monto Total ($)</label>
+                                <input type="number" step="0.01" id="cc-total-amount" placeholder="0.00" required min="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label for="cc-installments">Cantidad de Cuotas</label>
+                                <input type="number" id="cc-installments" placeholder="Ej: 3, 6, 12..." required min="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="cc-start-month">Mes de Inicio de Pago</label>
+                                <input type="month" id="cc-start-month" required>
+                            </div>
+                            <button type="submit" class="btn-primary btn-block">Registrar Tarjeta</button>
+                        </form>
+                    </div>
+
+                    <!-- Listado de Tarjetas -->
+                    <div class="card-panel" style="flex: 2;">
+                        <div class="panel-header">
+                            <h3>Control de Cuotas de Tarjeta</h3>
+                            <span>Seguimiento de compras</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Titular</th>
+                                        <th>Monto Total</th>
+                                        <th>Mes Inicio</th>
+                                        <th>Cuotas Pagadas</th>
+                                        <th>Valor Cuota</th>
+                                        <th>Restante</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="credit-cards-tbody">
+                                    <!-- Filas dinámicas -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -796,6 +857,66 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-secondary" id="close-debt-history-footer-btn">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE PAGO DE CUOTA DE TARJETA -->
+    <div id="cc-pay-modal" class="modal-overlay hide">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Registrar Pago de Tarjeta</h3>
+                <button class="modal-close-btn" id="close-cc-pay-btn">&times;</button>
+            </div>
+            <form id="cc-pay-form">
+                <input type="hidden" id="ccp-card-id">
+                
+                <div class="form-group">
+                    <label>Titular</label>
+                    <input type="text" id="ccp-cardholder" readonly style="background-color: var(--border-color); cursor: not-allowed;">
+                </div>
+
+                <div class="form-group">
+                    <label>Monto de la Cuota</label>
+                    <input type="text" id="ccp-card-amount" readonly style="background-color: var(--border-color); cursor: not-allowed;">
+                </div>
+
+                <div class="form-group">
+                    <label for="ccp-payment-date">Fecha de Pago</label>
+                    <input type="date" id="ccp-payment-date" required>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" id="cancel-cc-pay-btn">Cancelar</button>
+                    <button type="submit" class="btn-primary">Confirmar Pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DE HISTORIAL DE PAGOS DE TARJETA -->
+    <div id="cc-history-modal" class="modal-overlay hide">
+        <div class="modal-card" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3 id="cc-history-title">Historial de Cuotas</h3>
+                <button class="modal-close-btn" id="close-cc-history-btn">&times;</button>
+            </div>
+            <div class="table-responsive" style="margin-top: 1rem; max-height: 400px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nº Cuota</th>
+                            <th>Monto</th>
+                            <th>Fecha Pago</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cc-history-tbody">
+                        <!-- Carga dinámica -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="close-cc-history-footer-btn">Cerrar</button>
             </div>
         </div>
     </div>

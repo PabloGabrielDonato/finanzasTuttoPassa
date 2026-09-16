@@ -87,7 +87,8 @@ let state = {
     serviceTypes: [],
     servicePayments: [],
     debts: [],
-    contributions: []
+    contributions: [],
+    creditCards: []
 };
 
 // --- INICIALIZACIÓN ---
@@ -206,6 +207,17 @@ function initEventListeners() {
     // Aportes Formulario
     const contrForm = document.getElementById('contribution-form');
     if (contrForm) contrForm.addEventListener('submit', handleSaveContribution);
+    
+    // Tarjetas Formulario
+    document.getElementById('credit-card-form').addEventListener('submit', handleSaveCreditCard);
+    
+    // Tarjetas Modales
+    document.getElementById('close-cc-pay-btn').addEventListener('click', closeCCPayModal);
+    document.getElementById('cancel-cc-pay-btn').addEventListener('click', closeCCPayModal);
+    document.getElementById('cc-pay-form').addEventListener('submit', handleConfirmPayCCInstallment);
+    
+    document.getElementById('close-cc-history-btn').addEventListener('click', closeCCHistoryModal);
+    document.getElementById('close-cc-history-footer-btn').addEventListener('click', closeCCHistoryModal);
     
     // Auto-cálculo de cuota en Deudas
     const calculateInstallmentAmount = () => {
@@ -332,7 +344,8 @@ function switchView(viewName) {
         employees: 'Gestión de Empleados',
         services: 'Gestión de Servicios y Comprobantes',
         debts: 'Control de Deudas y Financiación',
-        contributions: 'Aportes de Socios'
+        contributions: 'Aportes de Socios',
+        'credit-cards': 'Control de Cuotas de Tarjeta'
     };
     document.getElementById('view-title').textContent = titles[viewName] || 'Tutto Passa';
 
@@ -349,6 +362,8 @@ function switchView(viewName) {
         renderDebtsTable();
     } else if (viewName === 'contributions') {
         renderContributionsTable();
+    } else if (viewName === 'credit-cards') {
+        renderCreditCardsTable();
     }
 }
 
@@ -420,6 +435,17 @@ async function loadData() {
             state.contributions = await contrsResponse.json();
             if (state.currentView === 'contributions') {
                 renderContributionsTable();
+            }
+        }
+
+        // 6.6 Cargar Tarjetas
+        const ccResponse = await fetch(`${API_URL}/api/credit-cards`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (ccResponse.ok && ccResponse.headers.get('content-type')?.includes('application/json')) {
+            state.creditCards = await ccResponse.json();
+            if (state.currentView === 'credit-cards') {
+                renderCreditCardsTable();
             }
         }
 
@@ -1677,6 +1703,145 @@ window.updateDebtsMetrics = updateDebtsMetrics;
 window.startEditEmployee = startEditEmployee;
 window.cancelEditEmployee = cancelEditEmployee;
 window.handleDeleteContribution = handleDeleteContribution;
+
+// --- TARJETAS DE CRÉDITO ---
+function renderCreditCardsTable() {
+    const tbody = document.getElementById('credit-cards-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (state.creditCards.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No hay tarjetas registradas.</td></tr>';
+        return;
+    }
+    state.creditCards.forEach(c => {
+        const tr = document.createElement('tr');
+        const totalAmt = parseFloat(c.total_amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+        const instAmt = parseFloat(c.installment_amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+        const paidCount = parseInt(c.installments_paid) || 0;
+        const remainingCount = c.installments - paidCount;
+        const isPaidOff = remainingCount <= 0;
+        tr.innerHTML = `
+            <td><strong>${c.cardholder}</strong></td>
+            <td>${totalAmt} (${c.installments} cuotas)</td>
+            <td>${c.start_month}</td>
+            <td><span class="badge ${isPaidOff ? 'badge-income' : 'badge-expense'}">${paidCount} / ${c.installments}</span></td>
+            <td>${instAmt}</td>
+            <td>${isPaidOff ? 'Pagado' : remainingCount + ' cuotas'}</td>
+            <td>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn-success btn-sm" onclick="openPayCCModal(${c.id}, '${c.cardholder}', ${c.installment_amount})" ${isPaidOff ? 'disabled style="opacity: 0.5;"' : 'title="Pagar Cuota"'}>✓ Pagar</button>
+                    <button class="btn-secondary btn-sm" onclick="openCCHistoryModal(${c.id}, '${c.cardholder}')" title="Historial de Pagos">Historial</button>
+                    <button class="btn-danger-outline btn-sm" onclick="handleDeleteCreditCard(${c.id})">Borrar</button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function handleSaveCreditCard(e) {
+    e.preventDefault();
+    const cardholder = document.getElementById('cc-cardholder').value;
+    const total_amount = document.getElementById('cc-total-amount').value;
+    const installments = document.getElementById('cc-installments').value;
+    const start_month = document.getElementById('cc-start-month').value;
+
+    try {
+        const response = await fetch(`${API_URL}/api/credit-cards`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+            body: JSON.stringify({ cardholder, total_amount, installments, start_month })
+        });
+        await safeResponseJSON(response, 'Error al guardar la tarjeta');
+        document.getElementById('credit-card-form').reset();
+        await loadData();
+        Alert.success('Tarjeta registrada correctamente.');
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+function openPayCCModal(id, cardholder, amount) {
+    document.getElementById('ccp-card-id').value = id;
+    document.getElementById('ccp-cardholder').value = cardholder;
+    document.getElementById('ccp-card-amount').value = '$' + amount;
+    document.getElementById('ccp-payment-date').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('cc-pay-modal').classList.remove('hide');
+}
+function closeCCPayModal() {
+    document.getElementById('cc-pay-modal').classList.add('hide');
+    document.getElementById('cc-pay-form').reset();
+}
+
+async function handleConfirmPayCCInstallment(e) {
+    e.preventDefault();
+    const id = document.getElementById('ccp-card-id').value;
+    const payment_date = document.getElementById('ccp-payment-date').value;
+    try {
+        const response = await fetch(`${API_URL}/api/credit-cards/${id}/pay-installment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.token}` },
+            body: JSON.stringify({ payment_date })
+        });
+        await safeResponseJSON(response, 'Error al registrar el pago de la tarjeta');
+        closeCCPayModal();
+        await loadData();
+        Alert.success('Cuota de tarjeta pagada con éxito.');
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+async function openCCHistoryModal(id, cardholder) {
+    document.getElementById('cc-history-title').textContent = `Historial de Cuotas: ${cardholder}`;
+    const tbody = document.getElementById('cc-history-tbody');
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Cargando...</td></tr>';
+    document.getElementById('cc-history-modal').classList.remove('hide');
+    try {
+        const response = await fetch(`${API_URL}/api/credit-cards/${id}/payments`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        const payments = await safeResponseJSON(response, 'Error al obtener historial');
+        tbody.innerHTML = '';
+        if (payments.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No hay pagos registrados.</td></tr>';
+            return;
+        }
+        payments.forEach(p => {
+            const tr = document.createElement('tr');
+            const formattedAmount = parseFloat(p.amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+            tr.innerHTML = `
+                <td><strong>Cuota ${p.installment_number}</strong></td>
+                <td>${formattedAmount}</td>
+                <td>${p.payment_date}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--danger);">Wait error: ${err.message}</td></tr>`;
+    }
+}
+function closeCCHistoryModal() {
+    document.getElementById('cc-history-modal').classList.add('hide');
+}
+
+async function handleDeleteCreditCard(id) {
+    if (!await Alert.confirm('¿Estás seguro de que deseas eliminar esta tarjeta y todo su historial de cuotas?')) return;
+    try {
+        const response = await fetch(`${API_URL}/api/credit-cards/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        await safeResponseJSON(response, 'Error al eliminar la tarjeta');
+        loadData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+window.openPayCCModal = openPayCCModal;
+window.openCCHistoryModal = openCCHistoryModal;
+window.handleDeleteCreditCard = handleDeleteCreditCard;
 
 // --- APORTES DE SOCIOS ---
 function renderContributionsTable() {
