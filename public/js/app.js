@@ -499,7 +499,8 @@ function renderTransactionsTable(filteredList = null) {
 
     list.forEach(t => {
         const tr = document.createElement('tr');
-        const formattedDate = new Date(t.date + 'T00:00:00').toLocaleDateString('es-AR');
+        const datePart = t.date.split('T')[0];
+        const formattedDate = new Date(datePart + 'T00:00:00').toLocaleDateString('es-AR');
         const formattedAmount = parseFloat(t.amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 
         let descriptionHTML = t.description || '<span class="text-muted">—</span>';
@@ -660,7 +661,8 @@ function renderCharts() {
     // 1. Procesamiento para Flujo de Caja (Ingresos vs Egresos por día)
     const daysMap = {};
     state.transactions.forEach(t => {
-        const day = t.date.split('-')[2]; // Obtener el número de día del mes
+        const datePart = t.date.split('T')[0];
+        const day = datePart.split('-')[2]; // Obtener el número de día del mes
         if (!daysMap[day]) {
             daysMap[day] = { income: 0, expense: 0 };
         }
@@ -854,7 +856,8 @@ function downloadPDFReport() {
     doc.text('Detalle de Movimientos', 15, 100);
 
     const tableRows = state.transactions.map(t => {
-        const dateStr = new Date(t.date + 'T00:00:00').toLocaleDateString('es-AR');
+        const datePart = t.date.split('T')[0];
+        const dateStr = new Date(datePart + 'T00:00:00').toLocaleDateString('es-AR');
         const amountStr = `${t.type === 'income' ? '+' : '-'}$${parseFloat(t.amount).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
         return [
             dateStr,
