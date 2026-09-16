@@ -1740,16 +1740,29 @@ window.handleDeleteContribution = handleDeleteContribution;
 
 // --- TARJETAS DE CRÉDITO ---
 function updateCreditCardsMetrics() {
-    let totalRemaining = 0;
+    let toPayThisMonth = 0;
     let pendingInstallments = 0;
     let totalPaid = 0;
+
+    const selectedMonth = document.getElementById('global-month').value;
+    const selDate = new Date(selectedMonth + '-01T00:00:00');
+    const selYear = selDate.getFullYear();
+    const selMonth = selDate.getMonth();
 
     if (state.creditCards) {
         state.creditCards.forEach(c => {
             const remainingInstallments = Math.max(0, c.installments - c.installments_paid);
-            totalRemaining += remainingInstallments * c.installment_amount;
             pendingInstallments += remainingInstallments;
             totalPaid += c.installments_paid * c.installment_amount;
+
+            if (c.start_month) {
+                const startDate = new Date(c.start_month + '-01T00:00:00');
+                const offset = (selYear - startDate.getFullYear()) * 12 + (selMonth - startDate.getMonth());
+                
+                if (offset >= 0 && offset < c.installments) {
+                    toPayThisMonth += parseFloat(c.installment_amount);
+                }
+            }
         });
     }
 
@@ -1757,7 +1770,7 @@ function updateCreditCardsMetrics() {
     const pendEl = document.getElementById('metric-cc-installments-remaining');
     const paidEl = document.getElementById('metric-cc-paid');
 
-    if (remEl) remEl.textContent = totalRemaining.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+    if (remEl) remEl.textContent = toPayThisMonth.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
     if (pendEl) pendEl.textContent = pendingInstallments.toString();
     if (paidEl) paidEl.textContent = totalPaid.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 }
