@@ -487,6 +487,7 @@ async function loadData() {
 function updateMetrics() {
     let income = 0;
     let expense = 0;
+    let paidInstallmentsThisMonth = 0;
 
     state.transactions.forEach(t => {
         const amt = parseFloat(t.amount);
@@ -494,21 +495,53 @@ function updateMetrics() {
             income += amt;
         } else {
             expense += amt;
+            // Identify if this expense is an installment payment (deuda or tarjeta)
+            if (t.category === 'Pago de Deuda' || (t.category === 'Otros' && t.description && t.description.startsWith('Cuota ') && t.description.includes('Tarjeta'))) {
+                paidInstallmentsThisMonth += amt;
+            }
         }
     });
 
     const balance = income - expense;
+
+    // Calcular cuotas totales del mes (activas)
+    let totalActiveInstallments = 0;
+    if (state.debts) {
+        state.debts.forEach(d => {
+            const paid = parseInt(d.installments_paid) || 0;
+            const total = parseInt(d.installments) || 1;
+            if (paid < total) {
+                totalActiveInstallments += parseFloat(d.installment_amount) || 0;
+            }
+        });
+    }
+    if (state.creditCards) {
+        state.creditCards.forEach(c => {
+            const paid = parseInt(c.installments_paid) || 0;
+            const total = parseInt(c.installments) || 1;
+            if (paid < total) {
+                totalActiveInstallments += parseFloat(c.installment_amount) || 0;
+            }
+        });
+    }
+
+    const unpaidInstallmentsThisMonth = Math.max(0, totalActiveInstallments - paidInstallmentsThisMonth);
+    const projectedBalance = balance - unpaidInstallmentsThisMonth;
 
     document.getElementById('metric-income').textContent = `$${income.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     document.getElementById('metric-expense').textContent = `$${expense.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     
     const balanceEl = document.getElementById('metric-balance');
     balanceEl.textContent = `$${balance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    
     if (balance < 0) {
         balanceEl.style.color = 'var(--danger)';
     } else {
         balanceEl.style.color = 'var(--success)';
+    }
+
+    const projBalanceEl = document.getElementById('metric-projected-balance');
+    if (projBalanceEl) {
+        projBalanceEl.textContent = `$${projectedBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
 }
 
