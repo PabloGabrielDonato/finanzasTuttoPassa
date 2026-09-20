@@ -1104,6 +1104,77 @@ app.get('/api/settlements', authenticateToken, async (req, res) => {
   }
 });
 
+// --- ESTADO DE CAJA (ARQUEO) ---
+app.get('/api/daily-registers/:date', authenticateToken, async (req, res) => {
+  const { date } = req.params;
+  try {
+    const registers = await db.query('SELECT * FROM daily_registers WHERE date = ?', [date]);
+    if (registers.length === 0) {
+      return res.json({ status: 'unopened' });
+    }
+    res.json(registers[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al consultar estado de caja.' });
+  }
+});
+
+app.post('/api/daily-registers/open', authenticateToken, async (req, res) => {
+  const { date, initial_cash } = req.body;
+  if (!date || initial_cash === undefined) {
+    return res.status(400).json({ error: 'Faltan datos para abrir la caja.' });
+  }
+  
+  try {
+    const existing = await db.query('SELECT * FROM daily_registers WHERE date = ?', [date]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'La caja ya fue abierta para esta fecha.' });
+    }
+    
+    await db.query('INSERT INTO daily_registers (date, initial_cash, status) VALUES (?, ?, ?)', [date, parseFloat(initial_cash), 'open']);
+    res.status(201).json({ message: 'Caja abierta con éxito.', initial_cash: parseFloat(initial_cash) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al abrir la caja.' });
+  }
+});
+
+app.post('/api/daily-registers/close', authenticateToken, async (req, res) => {
+  const { date, final_cash_counted, difference, next_day_cash } = req.body;
+  if (!date || final_cash_counted === undefined) {
+    return res.status(400).json({ error: 'Faltan datos para cerrar la caja.' });
+  }
+  
+  try {
+    const existing = await db.query('SELECT * FROM daily_registers WHERE date = ?', [date]);
+    if (existing.length === 0 || existing[0].status === 'closed') {
+      return res.status(400).json({ error: 'La caja no está abierta para esta fecha.' });
+    }
+    
+    await db.query('UPDATE daily_registers SET final_cash_counted = ?, next_day_cash = ?, status = ? WHERE date = ?', 
+      [parseFloat(final_cash_counted), next_day_cash !== undefined ? parseFloat(next_day_cash) : null, 'closed', date]);
+    
+    // Registrar el sobrante o faltante en transacciones generales si hay diferencia
+    if (difference && Math.abs(parseFloat(difference)) > 0) {
+      const diff = parseFloat(difference);
+      const type = diff > 0 ? 'income' : 'expense';
+      const absDiff = Math.abs(diff);
+      const category = 'Otros'; // O una específica
+      const desc = diff > 0 ? `Sobrante de Caja Arqueo (${date})` : `Faltante de Caja Arqueo (${date})`;
+      
+      await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, type, absDiff, category, desc, date, null]
+      );
+    }
+    
+    res.json({ message: 'Caja cerrada y arqueada con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al cerrar la caja.' });
+  }
+});
+
 // --- RUTAS DE CAJA DIARIA ---
 app.get('/api/daily-transactions', authenticateToken, async (req, res) => {
   const { date } = req.query; // Formato YYYY-MM-DD
@@ -1131,6 +1202,11 @@ app.post('/api/daily-transactions', authenticateToken, upload.single('photo'), a
   }
 
   try {
+    const register = await db.query('SELECT status FROM daily_registers WHERE date = ?', [date]);
+    if (register.length === 0 || register[0].status === 'closed') {
+      return res.status(400).json({ error: 'La caja no está abierta para esta fecha. No puedes agregar movimientos.' });
+    }
+
     const photoPath = req.file ? '/uploads/' + req.file.filename : null;
     const result = await db.query(
       'INSERT INTO daily_transactions (type, amount, payment_method, description, photo_path, date) VALUES (?, ?, ?, ?, ?, ?)',
@@ -1158,9 +1234,14 @@ app.post('/api/daily-transactions', authenticateToken, upload.single('photo'), a
 app.delete('/api/daily-transactions/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    const tx = await db.query('SELECT photo_path FROM daily_transactions WHERE id = ?', [id]);
+    const tx = await db.query('SELECT photo_path, date FROM daily_transactions WHERE id = ?', [id]);
     if (tx.length === 0) {
       return res.status(404).json({ error: 'Transacción no encontrada.' });
+    }
+    
+    const register = await db.query('SELECT status FROM daily_registers WHERE date = ?', [tx[0].date]);
+    if (register.length > 0 && register[0].status === 'closed') {
+      return res.status(400).json({ error: 'La caja ya fue cerrada para esta fecha. No puedes eliminar movimientos.' });
     }
     
     if (tx[0].photo_path) {

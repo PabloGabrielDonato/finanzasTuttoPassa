@@ -261,14 +261,34 @@ function initEventListeners() {
     const drForm = document.getElementById('daily-register-form');
     if (drForm) drForm.addEventListener('submit', handleSaveDailyTransaction);
     
+    const drOpenForm = document.getElementById('dr-open-form');
+    if (drOpenForm) drOpenForm.addEventListener('submit', handleOpenDailyRegister);
+
+    const drCloseForm = document.getElementById('dr-close-form');
+    if (drCloseForm) drCloseForm.addEventListener('submit', handleCloseDailyRegister);
+    
     const drDateSelector = document.getElementById('dr-date-selector');
     if (drDateSelector) drDateSelector.addEventListener('change', () => {
-        document.getElementById('dr-current-date-display').textContent = new Date(drDateSelector.value + 'T00:00:00').toLocaleDateString('es-AR');
+        const d = new Date(drDateSelector.value + 'T00:00:00');
+        const display = document.getElementById('dr-current-date-display');
+        if (display) display.textContent = d.toLocaleDateString('es-AR');
         loadDailyTransactions();
     });
 
-    const drCloseBtn = document.getElementById('dr-close-btn');
-    if (drCloseBtn) drCloseBtn.addEventListener('click', downloadDailyPDFReport);
+    const drOpenCloseModalBtn = document.getElementById('dr-open-close-modal-btn');
+    if (drOpenCloseModalBtn) drOpenCloseModalBtn.addEventListener('click', openDrCloseModal);
+    
+    const closeDrModalBtn = document.getElementById('close-dr-modal-btn');
+    if (closeDrModalBtn) closeDrModalBtn.addEventListener('click', () => document.getElementById('dr-close-modal').classList.add('hide'));
+    
+    const cancelDrCloseBtn = document.getElementById('cancel-dr-close-btn');
+    if (cancelDrCloseBtn) cancelDrCloseBtn.addEventListener('click', () => document.getElementById('dr-close-modal').classList.add('hide'));
+
+    const drDownloadPdfBtnClosed = document.getElementById('dr-download-pdf-btn-closed');
+    if (drDownloadPdfBtnClosed) drDownloadPdfBtnClosed.addEventListener('click', downloadDailyPDFReport);
+
+    const drCountedCashInput = document.getElementById('dr-counted-cash');
+    if (drCountedCashInput) drCountedCashInput.addEventListener('input', updateDrDifferenceDisplay);
 }
 
 // --- AUTENTICACIÓN ---
@@ -2059,17 +2079,67 @@ async function loadDailyTransactions() {
     const date = drDateSelector.value;
     if (!date) return;
     
+    // Ocultar todo primero
+    document.getElementById('dr-unopened-state').classList.add('hide');
+    document.getElementById('dr-open-state').classList.add('hide');
+    document.getElementById('dr-closed-state').classList.add('hide');
+    
     try {
-        const response = await fetch(`${API_URL}/api/daily-transactions?date=${date}`, {
+        // Consultar estado de la caja
+        const regResponse = await fetch(`${API_URL}/api/daily-registers/${date}`, {
             headers: { 'Authorization': `Bearer ${state.token}` }
         });
-        if (response.ok) {
-            state.dailyTransactions = await response.json();
+        
+        if (!regResponse.ok) throw new Error('Error al consultar estado de caja');
+        const registerData = await regResponse.json();
+        state.dailyRegister = registerData.status === 'unopened' ? null : registerData;
+        
+        if (!state.dailyRegister) {
+            document.getElementById('dr-unopened-state').classList.remove('hide');
+            return;
+        }
+        
+        // Consultar movimientos
+        const txResponse = await fetch(`${API_URL}/api/daily-transactions?date=${date}`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        
+        if (txResponse.ok) {
+            state.dailyTransactions = await txResponse.json();
             renderDailyTransactionsTable();
             updateDailyMetrics();
+            
+            if (state.dailyRegister.status === 'open') {
+                document.getElementById('dr-open-state').classList.remove('hide');
+            } else {
+                document.getElementById('dr-closed-state').classList.remove('hide');
+            }
         }
     } catch (err) {
         console.error('Error loading daily transactions:', err);
+    }
+}
+
+async function handleOpenDailyRegister(e) {
+    e.preventDefault();
+    const date = document.getElementById('dr-date-selector').value;
+    const initialCash = document.getElementById('dr-initial-cash').value;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/daily-registers/open`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ date, initial_cash: initialCash })
+        });
+        
+        await safeResponseJSON(response, 'Error al abrir la caja');
+        Alert.success('Caja abierta correctamente.');
+        loadDailyTransactions();
+    } catch (err) {
+        Alert.error(err.message);
     }
 }
 
@@ -2108,30 +2178,45 @@ function renderDailyTransactionsTable() {
     });
 }
 
+function getExpectedCash() {
+    let cashIncome = 0;
+    let cashExpense = 0;
+    state.dailyTransactions.forEach(t => {
+        if (t.payment_method === 'Efectivo') {
+            if (t.type === 'income') cashIncome += parseFloat(t.amount);
+            else cashExpense += parseFloat(t.amount);
+        }
+    });
+    const initial = state.dailyRegister ? parseFloat(state.dailyRegister.initial_cash) : 0;
+    return initial + cashIncome - cashExpense;
+}
+
 function updateDailyMetrics() {
     let income = 0;
     let expense = 0;
     
     state.dailyTransactions.forEach(t => {
-        if (t.type === 'income') {
-            income += parseFloat(t.amount);
-        } else {
-            expense += parseFloat(t.amount);
-        }
+        if (t.type === 'income') income += parseFloat(t.amount);
+        else expense += parseFloat(t.amount);
     });
     
-    const balance = income - expense;
+    const initial = state.dailyRegister ? parseFloat(state.dailyRegister.initial_cash) : 0;
+    const initialEl = document.getElementById('dr-metric-initial');
+    if (initialEl) initialEl.textContent = `$${initial.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     
     document.getElementById('dr-metric-income').textContent = `$${income.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     document.getElementById('dr-metric-expense').textContent = `$${expense.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     
+    const expectedCash = getExpectedCash();
     const balanceEl = document.getElementById('dr-metric-balance');
-    balanceEl.textContent = `$${balance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    balanceEl.style.color = balance < 0 ? 'var(--danger)' : 'var(--success)';
+    balanceEl.textContent = `$${expectedCash.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    balanceEl.style.color = expectedCash < 0 ? 'var(--danger)' : 'var(--success)';
 }
 
 async function handleSaveDailyTransaction(e) {
     e.preventDefault();
+    if (state.dailyRegister?.status === 'closed') return;
+    
     const date = document.getElementById('dr-date-selector').value;
     const type = document.getElementById('dr-type').value;
     const amount = document.getElementById('dr-amount').value;
@@ -2169,6 +2254,7 @@ async function handleSaveDailyTransaction(e) {
 }
 
 async function handleDeleteDailyTransaction(id) {
+    if (state.dailyRegister?.status === 'closed') return;
     if (!await Alert.confirm('¿Eliminar este movimiento de caja diaria?')) return;
     
     try {
@@ -2187,12 +2273,69 @@ async function handleDeleteDailyTransaction(id) {
 }
 window.handleDeleteDailyTransaction = handleDeleteDailyTransaction;
 
-function downloadDailyPDFReport() {
-    if (state.dailyTransactions.length === 0) {
-        Alert.warning('No hay movimientos para generar el cierre de caja.');
-        return;
-    }
+function openDrCloseModal() {
+    document.getElementById('dr-close-form').reset();
+    document.getElementById('dr-difference-display').classList.add('hide');
+    const expected = getExpectedCash();
+    document.getElementById('dr-modal-expected-cash').textContent = `$${expected.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+    document.getElementById('dr-close-modal').classList.remove('hide');
+}
+
+function updateDrDifferenceDisplay() {
+    const counted = parseFloat(document.getElementById('dr-counted-cash').value) || 0;
+    const expected = getExpectedCash();
+    const diff = counted - expected;
+    const diffEl = document.getElementById('dr-difference-display');
     
+    diffEl.classList.remove('hide', 'alert-success', 'alert-danger', 'alert-warning');
+    if (diff === 0) {
+        diffEl.classList.add('alert-success');
+        diffEl.textContent = '¡Caja Cuadrada Perfectamente! ($0.00 de diferencia)';
+    } else if (diff > 0) {
+        diffEl.classList.add('alert-warning');
+        diffEl.textContent = `Sobrante de Caja: +$${diff.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+    } else {
+        diffEl.classList.add('alert-danger');
+        diffEl.textContent = `Faltante de Caja: -$${Math.abs(diff).toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+    }
+}
+
+async function handleCloseDailyRegister(e) {
+    e.preventDefault();
+    const date = document.getElementById('dr-date-selector').value;
+    const counted = parseFloat(document.getElementById('dr-counted-cash').value) || 0;
+    const nextDayCash = parseFloat(document.getElementById('dr-next-day-cash').value) || 0;
+    const expected = getExpectedCash();
+    const difference = counted - expected;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/daily-registers/close`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ date, final_cash_counted: counted, difference, next_day_cash: nextDayCash })
+        });
+        
+        await safeResponseJSON(response, 'Error al cerrar la caja');
+        document.getElementById('dr-close-modal').classList.add('hide');
+        Alert.success('Caja cerrada correctamente.');
+        
+        if (state.dailyRegister) {
+            state.dailyRegister.final_cash_counted = counted;
+            state.dailyRegister.next_day_cash = nextDayCash;
+            state.dailyRegister.status = 'closed';
+        }
+        
+        downloadDailyPDFReport(difference);
+        loadDailyTransactions();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+function downloadDailyPDFReport(diffArg) {
     const dateStr = document.getElementById('dr-date-selector').value;
     const formattedDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('es-AR');
     
@@ -2200,12 +2343,19 @@ function downloadDailyPDFReport() {
     const doc = new jsPDF();
     
     doc.setFontSize(18);
-    doc.setTextColor(217, 119, 6); // Primary color
-    doc.text(`Tutto Passa - Cierre de Caja Diaria`, 14, 20);
+    doc.setTextColor(217, 119, 6);
+    doc.text(`Tutto Passa - Arqueo de Caja`, 14, 20);
     
     doc.setFontSize(12);
-    doc.setTextColor(55, 65, 81); // Text color
+    doc.setTextColor(55, 65, 81);
     doc.text(`Fecha: ${formattedDate}`, 14, 30);
+    
+    const initialCash = state.dailyRegister ? parseFloat(state.dailyRegister.initial_cash) : 0;
+    const finalCashCounted = state.dailyRegister?.final_cash_counted !== undefined 
+                             ? parseFloat(state.dailyRegister.final_cash_counted) 
+                             : 0;
+    
+    doc.text(`Caja Inicial: $${initialCash.toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, 40);
     
     let totalIncome = 0;
     let totalExpense = 0;
@@ -2224,29 +2374,51 @@ function downloadDailyPDFReport() {
         ];
     });
     
-    const balance = totalIncome - totalExpense;
-    
     doc.autoTable({
-        startY: 40,
+        startY: 50,
         head: [['Tipo', 'Método', 'Descripción', 'Monto']],
-        body: tableData,
+        body: tableData.length > 0 ? tableData : [['-', 'Sin movimientos', '-', '-']],
         theme: 'striped',
         headStyles: { fillColor: [217, 119, 6] },
         styles: { fontSize: 10 }
     });
     
-    const finalY = doc.lastAutoTable.finalY || 40;
+    let finalY = doc.lastAutoTable.finalY || 50;
+    
+    const expectedCash = getExpectedCash();
+    const difference = typeof diffArg === 'number' ? diffArg : (finalCashCounted - expectedCash);
     
     doc.setFontSize(11);
-    doc.setTextColor(16, 185, 129); // Success
-    doc.text(`Total Ingresos: $${totalIncome.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 10);
+    doc.setTextColor(31, 41, 55);
+    doc.text(`Total Ingresos: $${totalIncome.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 15);
+    doc.text(`Total Egresos: $${totalExpense.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 22);
     
-    doc.setTextColor(239, 68, 68); // Danger
-    doc.text(`Total Egresos: $${totalExpense.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 17);
-    
+    finalY += 35;
     doc.setFontSize(14);
-    doc.setTextColor(31, 41, 55); // Dark text
-    doc.text(`Balance Neto: $${balance.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 27);
+    doc.setTextColor(217, 119, 6);
+    doc.text(`Resumen Físico (Efectivo)`, 14, finalY);
     
-    doc.save(`Cierre_Caja_${dateStr}.pdf`);
+    doc.setFontSize(12);
+    doc.setTextColor(31, 41, 55);
+    doc.text(`Saldo Teórico Esperado: $${expectedCash.toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, finalY + 10);
+    doc.text(`Efectivo Real Contado: $${finalCashCounted.toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, finalY + 17);
+    
+    if (difference === 0) {
+        doc.setTextColor(16, 185, 129); // Success
+        doc.text(`Diferencia: Caja Cuadrada Perfectamente`, 14, finalY + 27);
+    } else if (difference > 0) {
+        doc.setTextColor(217, 119, 6); // Warning
+        doc.text(`Diferencia: Sobrante de +$${difference.toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, finalY + 27);
+    } else {
+        doc.setTextColor(239, 68, 68); // Danger
+        doc.text(`Diferencia: Faltante de -$${Math.abs(difference).toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, finalY + 27);
+    }
+    
+    if (state.dailyRegister && state.dailyRegister.next_day_cash !== undefined && state.dailyRegister.next_day_cash !== null) {
+        doc.setFontSize(11);
+        doc.setTextColor(107, 114, 128); // Gray
+        doc.text(`Fondo Fijo que queda para el siguiente día: $${parseFloat(state.dailyRegister.next_day_cash).toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, finalY + 37);
+    }
+    
+    doc.save(`Arqueo_Caja_${dateStr}.pdf`);
 }

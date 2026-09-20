@@ -246,104 +246,138 @@
 
             <!-- CONTENIDO DE LA VISTA: CAJA DIARIA -->
             <section id="view-daily-register" class="content-view hide">
-                <div class="metrics-grid" style="margin-bottom: 2rem;">
-                    <div class="metric-card card-income">
-                        <div class="metric-info">
-                            <span>Ingresos del Día</span>
-                            <h3 id="dr-metric-income">$0.00</h3>
-                        </div>
-                        <div class="metric-icon">▲</div>
-                    </div>
-                    <div class="metric-card card-expense">
-                        <div class="metric-info">
-                            <span>Egresos del Día</span>
-                            <h3 id="dr-metric-expense">$0.00</h3>
-                        </div>
-                        <div class="metric-icon">▼</div>
-                    </div>
-                    <div class="metric-card card-balance">
-                        <div class="metric-info">
-                            <span>Balance de Caja</span>
-                            <h3 id="dr-metric-balance">$0.00</h3>
-                        </div>
-                        <div class="metric-icon">⚖</div>
-                    </div>
+                <!-- Selector Global de Fecha (Aplica a todos los estados) -->
+                <div class="card-panel" style="margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; padding: 1rem;">
+                    <label for="dr-date-selector" style="margin: 0; font-weight: bold;">Caja correspondiente al día:</label>
+                    <input type="date" id="dr-date-selector" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color);">
                 </div>
 
-                <div class="dashboard-grid grid-form-table">
-                    <!-- Formulario Nuevo Movimiento Diario -->
-                    <div class="card-panel">
-                        <div class="panel-header">
-                            <h3>Nuevo Movimiento de Caja</h3>
+                <!-- ESTADO: CAJA NO ABIERTA -->
+                <div id="dr-unopened-state" class="card-panel text-center hide" style="padding: 4rem 2rem;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">💵</div>
+                    <h2>Apertura de Caja</h2>
+                    <p class="text-muted" style="margin-bottom: 2rem;">La caja para este día aún no ha sido abierta. Ingresa el Fondo Fijo (Caja Inicial) para comenzar a operar.</p>
+                    <form id="dr-open-form" style="max-width: 400px; margin: 0 auto;">
+                        <div class="form-group">
+                            <label for="dr-initial-cash">Efectivo Inicial en Caja ($)</label>
+                            <input type="number" id="dr-initial-cash" step="0.01" min="0" placeholder="0.00" required>
                         </div>
-                        <form id="daily-register-form">
-                            <div class="form-group">
-                                <label for="dr-type">Tipo de Movimiento</label>
-                                <select id="dr-type" required>
-                                    <option value="" disabled selected>Selecciona tipo</option>
-                                    <option value="income">Ingreso</option>
-                                    <option value="expense">Egreso / Gasto</option>
-                                </select>
+                        <button type="submit" class="btn-primary btn-block">Abrir Caja del Día</button>
+                    </form>
+                </div>
+
+                <!-- ESTADO: CAJA CERRADA -->
+                <div id="dr-closed-state" class="card-panel text-center hide" style="padding: 4rem 2rem; background: rgba(16, 185, 129, 0.05); border: 1px solid var(--success);">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
+                    <h2 style="color: var(--success);">Caja Cerrada</h2>
+                    <p class="text-muted" style="margin-bottom: 2rem;">La caja para este día ha sido arqueada y cerrada. No se pueden agregar ni eliminar más movimientos.</p>
+                    <button id="dr-download-pdf-btn-closed" class="btn-primary" style="margin: 0 auto;">
+                        Descargar Reporte PDF
+                    </button>
+                </div>
+
+                <!-- ESTADO: CAJA ABIERTA (OPERANDO) -->
+                <div id="dr-open-state" class="hide">
+                    <div class="metrics-grid" style="margin-bottom: 2rem;">
+                        <div class="metric-card card-income">
+                            <div class="metric-info">
+                                <span>Caja Inicial</span>
+                                <h3 id="dr-metric-initial">$0.00</h3>
                             </div>
-                            <div class="form-group">
-                                <label for="dr-amount">Importe ($)</label>
-                                <input type="number" step="0.01" id="dr-amount" placeholder="0.00" required min="0.01">
+                            <div class="metric-icon">💵</div>
+                        </div>
+                        <div class="metric-card card-income">
+                            <div class="metric-info">
+                                <span>Ingresos del Día</span>
+                                <h3 id="dr-metric-income">$0.00</h3>
                             </div>
-                            <div class="form-group">
-                                <label for="dr-payment-method">Método (Acreditación / Débito)</label>
-                                <select id="dr-payment-method" required>
-                                    <option value="" disabled selected>Selecciona método</option>
-                                    <option value="Mercado Pago">Mercado Pago</option>
-                                    <option value="Payway">Payway</option>
-                                    <option value="Efectivo">Efectivo</option>
-                                </select>
+                            <div class="metric-icon">▲</div>
+                        </div>
+                        <div class="metric-card card-expense">
+                            <div class="metric-info">
+                                <span>Egresos del Día</span>
+                                <h3 id="dr-metric-expense">$0.00</h3>
                             </div>
-                            <div class="form-group">
-                                <label for="dr-description">Descripción (Opcional)</label>
-                                <input type="text" id="dr-description" placeholder="Ej: Venta mañana, Compra insumos...">
+                            <div class="metric-icon">▼</div>
+                        </div>
+                        <div class="metric-card card-balance">
+                            <div class="metric-info">
+                                <span>Saldo Teórico (Efectivo)</span>
+                                <h3 id="dr-metric-balance">$0.00</h3>
                             </div>
-                            <div class="form-group">
-                                <label for="dr-photo">Foto / Comprobante (Opcional)</label>
-                                <input type="file" id="dr-photo" accept="image/*,application/pdf">
-                            </div>
-                            <button type="submit" class="btn-primary btn-block">Registrar Movimiento</button>
-                        </form>
+                            <div class="metric-icon">⚖</div>
+                        </div>
                     </div>
 
-                    <!-- Listado de Movimientos Diarios y Cierre -->
-                    <div class="card-panel" style="flex: 2;">
-                        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <h3>Movimientos del Día</h3>
-                                <span id="dr-current-date-display">Fecha</span>
+                    <div class="dashboard-grid grid-form-table">
+                        <!-- Formulario Nuevo Movimiento Diario -->
+                        <div class="card-panel">
+                            <div class="panel-header">
+                                <h3>Nuevo Movimiento</h3>
                             </div>
-                            <button class="btn-danger" id="dr-close-btn" style="padding: 0.5rem 1rem;">
-                                Cerrar Caja del Día
-                            </button>
-                        </div>
-                        
-                        <!-- Selector de Fecha para ver días anteriores -->
-                        <div style="margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem;">
-                            <label for="dr-date-selector">Ver caja del día:</label>
-                            <input type="date" id="dr-date-selector" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-color);">
+                            <form id="daily-register-form">
+                                <div class="form-group">
+                                    <label for="dr-type">Tipo de Movimiento</label>
+                                    <select id="dr-type" required>
+                                        <option value="" disabled selected>Selecciona tipo</option>
+                                        <option value="income">Ingreso</option>
+                                        <option value="expense">Egreso / Gasto</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="dr-amount">Importe ($)</label>
+                                    <input type="number" step="0.01" id="dr-amount" placeholder="0.00" required min="0.01">
+                                </div>
+                                <div class="form-group">
+                                    <label for="dr-payment-method">Método</label>
+                                    <select id="dr-payment-method" required>
+                                        <option value="" disabled selected>Selecciona método</option>
+                                        <option value="Efectivo">Efectivo</option>
+                                        <option value="Mercado Pago">Mercado Pago</option>
+                                        <option value="Payway">Payway</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="dr-description">Descripción (Opcional)</label>
+                                    <input type="text" id="dr-description" placeholder="Ej: Venta mañana...">
+                                </div>
+                                <div class="form-group">
+                                    <label for="dr-photo">Comprobante (Opcional)</label>
+                                    <input type="file" id="dr-photo" accept="image/*,application/pdf">
+                                </div>
+                                <button type="submit" class="btn-primary btn-block">Registrar Movimiento</button>
+                            </form>
                         </div>
 
-                        <div class="table-responsive">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Tipo</th>
-                                        <th>Método</th>
-                                        <th>Descripción</th>
-                                        <th>Importe</th>
-                                        <th>Foto</th>
-                                        <th>Acción</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="daily-transactions-tbody">
-                                    <!-- Filas dinámicas -->
-                                </tbody>
-                            </table>
+                        <!-- Listado de Movimientos Diarios y Cierre -->
+                        <div class="card-panel" style="flex: 2;">
+                            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h3>Movimientos del Día</h3>
+                                    <span id="dr-current-date-display">Fecha</span>
+                                </div>
+                                <button class="btn-danger" id="dr-open-close-modal-btn" style="padding: 0.5rem 1rem;">
+                                    Arqueo y Cierre de Caja
+                                </button>
+                            </div>
+                            
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th>Método</th>
+                                            <th>Descripción</th>
+                                            <th>Importe</th>
+                                            <th>Foto</th>
+                                            <th>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="daily-transactions-tbody">
+                                        <!-- Filas dinámicas -->
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1072,7 +1106,48 @@
         </div>
     </div>
 
-    <!-- App Script -->
+    <!-- MODAL ARQUEO DE CAJA -->
+    <div id="dr-close-modal" class="modal hide">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Arqueo y Cierre Físico de Caja</h2>
+                <button class="close-modal" id="close-dr-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Ingresa cuánto dinero físico cuentas realmente en el cajón para calcular el sobrante o faltante antes de cerrar.</p>
+                <div class="metrics-grid" style="grid-template-columns: 1fr; margin-bottom: 1rem;">
+                    <div class="metric-card card-balance">
+                        <div class="metric-info">
+                            <span>Saldo Teórico en Efectivo Esperado</span>
+                            <h3 id="dr-modal-expected-cash">$0.00</h3>
+                        </div>
+                    </div>
+                </div>
+                <form id="dr-close-form">
+                    <div class="form-group">
+                        <label for="dr-counted-cash">Efectivo Físico Contado ($)</label>
+                        <input type="number" id="dr-counted-cash" step="0.01" min="0" required placeholder="0.00" style="font-size: 1.5rem; padding: 1rem;">
+                    </div>
+                    
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label for="dr-next-day-cash">Dinero que dejas en caja para mañana (Fondo Fijo) ($)</label>
+                        <input type="number" id="dr-next-day-cash" step="0.01" min="0" required placeholder="0.00" style="font-size: 1.2rem; padding: 0.8rem;">
+                    </div>
+                    
+                    <div id="dr-difference-display" class="alert hide" style="margin-top: 1rem;">
+                        <!-- Diff display -->
+                    </div>
+
+                    <div class="modal-footer" style="margin-top: 2rem;">
+                        <button type="button" class="btn-secondary" id="cancel-dr-close-btn">Cancelar</button>
+                        <button type="submit" class="btn-danger">Confirmar Cierre y Descargar PDF</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
     <script src="js/app.js?v=1.0.7"></script>
 </body>
 </html>
