@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS daily_transactions (
     payment_method VARCHAR(50) NOT NULL,
     description TEXT,
     photo_path VARCHAR(255) NULL,
+    global_transaction_id INT NULL,
     date DATE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (global_transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
 );

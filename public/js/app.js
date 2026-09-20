@@ -190,6 +190,17 @@ function initEventListeners() {
         }
     });
 
+    // Mostrar/ocultar selector de empleado en Caja Diaria cuando es un egreso
+    document.getElementById('dr-type').addEventListener('change', (e) => {
+        const empGroup = document.getElementById('dr-employee-group');
+        if (e.target.value === 'expense') {
+            empGroup.classList.remove('hide');
+        } else {
+            empGroup.classList.add('hide');
+            document.getElementById('dr-employee').value = '';
+        }
+    });
+
     // Modal cerrar al hacer clic afuera
     document.getElementById('transaction-modal').addEventListener('click', (e) => {
         if (e.target.id === 'transaction-modal') closeModal();
@@ -1159,15 +1170,27 @@ window.handleDeleteCategory = handleDeleteCategory;
 
 function populateEmployeeDropdowns() {
     const txEmpSelect = document.getElementById('tx-employee');
-    if (!txEmpSelect) return;
+    const drEmpSelect = document.getElementById('dr-employee');
+    
+    if (txEmpSelect) {
+        txEmpSelect.innerHTML = '<option value="">Ninguno / Gasto Operativo General</option>';
+        state.employees.forEach(emp => {
+            const opt = document.createElement('option');
+            opt.value = emp.id;
+            opt.textContent = `${emp.name} (${emp.is_partner ? 'Socio' : 'Empleado'})`;
+            txEmpSelect.appendChild(opt);
+        });
+    }
 
-    txEmpSelect.innerHTML = '<option value="">Ninguno / Gasto Operativo General</option>';
-    state.employees.forEach(emp => {
-        const opt = document.createElement('option');
-        opt.value = emp.id;
-        opt.textContent = `${emp.name} (${emp.is_partner ? 'Socio' : 'Empleado'})`;
-        txEmpSelect.appendChild(opt);
-    });
+    if (drEmpSelect) {
+        drEmpSelect.innerHTML = '<option value="">Ninguno / No es adelanto</option>';
+        state.employees.forEach(emp => {
+            const opt = document.createElement('option');
+            opt.value = emp.id;
+            opt.textContent = `${emp.name} (${emp.is_partner ? 'Socio' : 'Empleado'})`;
+            drEmpSelect.appendChild(opt);
+        });
+    }
 }
 
 function renderEmployeesTable() {
@@ -2222,6 +2245,7 @@ async function handleSaveDailyTransaction(e) {
     const amount = document.getElementById('dr-amount').value;
     const paymentMethod = document.getElementById('dr-payment-method').value;
     const description = document.getElementById('dr-description').value;
+    const employeeId = document.getElementById('dr-employee').value;
     const photoFile = document.getElementById('dr-photo').files[0];
     
     const formData = new FormData();
@@ -2230,6 +2254,9 @@ async function handleSaveDailyTransaction(e) {
     formData.append('amount', amount);
     formData.append('payment_method', paymentMethod);
     formData.append('description', description);
+    if (employeeId) {
+        formData.append('employee_id', employeeId);
+    }
     if (photoFile) {
         formData.append('photo', photoFile);
     }

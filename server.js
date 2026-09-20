@@ -1191,7 +1191,7 @@ app.get('/api/daily-transactions', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/daily-transactions', authenticateToken, upload.single('photo'), async (req, res) => {
-  const { type, amount, payment_method, description, date } = req.body;
+  const { type, amount, payment_method, description, date, employee_id } = req.body;
   if (!type || !amount || !payment_method || !date) {
     return res.status(400).json({ error: 'Tipo, monto, método y fecha son obligatorios.' });
   }
@@ -1208,9 +1208,20 @@ app.post('/api/daily-transactions', authenticateToken, upload.single('photo'), a
     }
 
     const photoPath = req.file ? '/uploads/' + req.file.filename : null;
+    let globalTxId = null;
+
+    // Si es un adelanto de sueldo (tiene employee_id y es egreso), registrarlo en la tabla general
+    if (type === 'expense' && employee_id) {
+      const globalTx = await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, type, numericAmount, 'Sueldos', description || 'Adelanto de sueldo desde Caja', date, employee_id]
+      );
+      globalTxId = globalTx.insertId;
+    }
+
     const result = await db.query(
-      'INSERT INTO daily_transactions (type, amount, payment_method, description, photo_path, date) VALUES (?, ?, ?, ?, ?, ?)',
-      [type, numericAmount, payment_method, description || '', photoPath, date]
+      'INSERT INTO daily_transactions (type, amount, payment_method, description, photo_path, global_transaction_id, date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [type, numericAmount, payment_method, description || '', photoPath, globalTxId, date]
     );
 
     res.status(201).json({
@@ -1222,6 +1233,7 @@ app.post('/api/daily-transactions', authenticateToken, upload.single('photo'), a
         payment_method,
         description,
         photo_path: photoPath,
+        global_transaction_id: globalTxId,
         date
       }
     });
@@ -1234,7 +1246,7 @@ app.post('/api/daily-transactions', authenticateToken, upload.single('photo'), a
 app.delete('/api/daily-transactions/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    const tx = await db.query('SELECT photo_path, date FROM daily_transactions WHERE id = ?', [id]);
+    const tx = await db.query('SELECT photo_path, date, global_transaction_id FROM daily_transactions WHERE id = ?', [id]);
     if (tx.length === 0) {
       return res.status(404).json({ error: 'Transacción no encontrada.' });
     }
@@ -1249,6 +1261,11 @@ app.delete('/api/daily-transactions/:id', authenticateToken, async (req, res) =>
       if (fs.existsSync(fullPhotoPath)) {
         fs.unlinkSync(fullPhotoPath);
       }
+    }
+    
+    // Si tenía un adelanto global asociado, eliminarlo
+    if (tx[0].global_transaction_id) {
+      await db.query('DELETE FROM transactions WHERE id = ?', [tx[0].global_transaction_id]);
     }
     
     await db.query('DELETE FROM daily_transactions WHERE id = ?', [id]);
