@@ -84,3 +84,14 @@ CREATE TABLE IF NOT EXISTS credit_card_payments (
 
 -- Los usuarios por defecto (Luca, Thiago, Pablo) se inicializarán automáticamente desde el servidor backend
 -- con contraseñas seguras iniciales equivalentes a sus nombres en minúscula (ej: password "luca" para el usuario "luca").
+
+CREATE TABLE IF NOT EXISTS daily_transactions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    type ENUM('income', 'expense') NOT NULL,
+    amount DECIMAL(12, 2) NOT NULL,
+    payment_method VARCHAR(50) NOT NULL,
+    description TEXT,
+    photo_path VARCHAR(255) NULL,
+    date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

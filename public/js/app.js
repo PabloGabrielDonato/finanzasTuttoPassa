@@ -88,7 +88,8 @@ let state = {
     servicePayments: [],
     debts: [],
     contributions: [],
-    creditCards: []
+    creditCards: [],
+    dailyTransactions: []
 };
 
 // --- INICIALIZACIÓN ---
@@ -109,6 +110,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const contrDate = document.getElementById('contr-date');
     if (contrDate) contrDate.value = today.toISOString().slice(0, 10);
+
+    const drDateSelector = document.getElementById('dr-date-selector');
+    if (drDateSelector) {
+        drDateSelector.value = today.toISOString().slice(0, 10);
+        document.getElementById('dr-current-date-display').textContent = new Date(drDateSelector.value + 'T00:00:00').toLocaleDateString('es-AR');
+    }
 
     initEventListeners();
     checkAuth();
@@ -163,6 +170,7 @@ function initEventListeners() {
     });
     document.getElementById('filter-type').addEventListener('change', applyFilters);
     document.getElementById('filter-category').addEventListener('change', applyFilters);
+    document.getElementById('filter-cc-installments').addEventListener('change', renderCreditCardsTable);
 
     // Modales de Transacción
     document.getElementById('open-income-btn').addEventListener('click', () => openModal('income'));
@@ -248,6 +256,19 @@ function initEventListeners() {
     document.getElementById('close-debt-history-footer-btn').addEventListener('click', () => {
         document.getElementById('debt-history-modal').classList.add('hide');
     });
+
+    // Caja Diaria
+    const drForm = document.getElementById('daily-register-form');
+    if (drForm) drForm.addEventListener('submit', handleSaveDailyTransaction);
+    
+    const drDateSelector = document.getElementById('dr-date-selector');
+    if (drDateSelector) drDateSelector.addEventListener('change', () => {
+        document.getElementById('dr-current-date-display').textContent = new Date(drDateSelector.value + 'T00:00:00').toLocaleDateString('es-AR');
+        loadDailyTransactions();
+    });
+
+    const drCloseBtn = document.getElementById('dr-close-btn');
+    if (drCloseBtn) drCloseBtn.addEventListener('click', downloadDailyPDFReport);
 }
 
 // --- AUTENTICACIÓN ---
@@ -345,7 +366,8 @@ function switchView(viewName) {
         services: 'Gestión de Servicios y Comprobantes',
         debts: 'Control de Deudas y Financiación',
         contributions: 'Aportes de Socios',
-        'credit-cards': 'Control de Cuotas de Tarjeta'
+        'credit-cards': 'Control de Cuotas de Tarjeta',
+        'daily-register': 'Caja Diaria'
     };
     document.getElementById('view-title').textContent = titles[viewName] || 'Tutto Passa';
 
@@ -364,6 +386,8 @@ function switchView(viewName) {
         renderContributionsTable();
     } else if (viewName === 'credit-cards') {
         renderCreditCardsTable();
+    } else if (viewName === 'daily-register') {
+        loadDailyTransactions();
     }
 }
 
@@ -1779,11 +1803,18 @@ function renderCreditCardsTable() {
     const tbody = document.getElementById('credit-cards-tbody');
     if (!tbody) return;
     tbody.innerHTML = '';
-    if (state.creditCards.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No hay tarjetas registradas.</td></tr>';
+    
+    const filterInstallments = document.getElementById('filter-cc-installments').value;
+    const filteredCards = state.creditCards.filter(c => {
+        if (!filterInstallments) return true;
+        return parseInt(c.installments) === parseInt(filterInstallments);
+    });
+
+    if (filteredCards.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No hay tarjetas registradas que coincidan con el filtro.</td></tr>';
         return;
     }
-    state.creditCards.forEach(c => {
+    filteredCards.forEach(c => {
         const tr = document.createElement('tr');
         const totalAmt = parseFloat(c.total_amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
         const instAmt = parseFloat(c.installment_amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
@@ -2019,4 +2050,203 @@ async function handleDeleteContribution(id) {
     } catch (err) {
         Alert.error(err.message);
     }
+}
+
+// --- CAJA DIARIA ---
+async function loadDailyTransactions() {
+    const drDateSelector = document.getElementById('dr-date-selector');
+    if (!drDateSelector) return;
+    const date = drDateSelector.value;
+    if (!date) return;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/daily-transactions?date=${date}`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (response.ok) {
+            state.dailyTransactions = await response.json();
+            renderDailyTransactionsTable();
+            updateDailyMetrics();
+        }
+    } catch (err) {
+        console.error('Error loading daily transactions:', err);
+    }
+}
+
+function renderDailyTransactionsTable() {
+    const tbody = document.getElementById('daily-transactions-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    
+    if (state.dailyTransactions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No hay movimientos registrados para este día.</td></tr>`;
+        return;
+    }
+    
+    state.dailyTransactions.forEach(t => {
+        const tr = document.createElement('tr');
+        const formattedAmount = parseFloat(t.amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+        
+        let photoHtml = '<span class="text-muted">—</span>';
+        if (t.photo_path) {
+            photoHtml = `<a href="${t.photo_path}" target="_blank" style="color: var(--primary); text-decoration: underline;">Ver Foto</a>`;
+        }
+        
+        tr.innerHTML = `
+            <td><span class="badge badge-${t.type}">${t.type === 'income' ? 'Ingreso' : 'Egreso'}</span></td>
+            <td>${t.payment_method}</td>
+            <td>${t.description || '<span class="text-muted">—</span>'}</td>
+            <td class="cell-amount ${t.type}">${t.type === 'income' ? '+' : '-'}${formattedAmount}</td>
+            <td>${photoHtml}</td>
+            <td>
+                <button class="btn-delete" onclick="handleDeleteDailyTransaction(${t.id})" title="Eliminar movimiento">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function updateDailyMetrics() {
+    let income = 0;
+    let expense = 0;
+    
+    state.dailyTransactions.forEach(t => {
+        if (t.type === 'income') {
+            income += parseFloat(t.amount);
+        } else {
+            expense += parseFloat(t.amount);
+        }
+    });
+    
+    const balance = income - expense;
+    
+    document.getElementById('dr-metric-income').textContent = `$${income.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    document.getElementById('dr-metric-expense').textContent = `$${expense.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    
+    const balanceEl = document.getElementById('dr-metric-balance');
+    balanceEl.textContent = `$${balance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    balanceEl.style.color = balance < 0 ? 'var(--danger)' : 'var(--success)';
+}
+
+async function handleSaveDailyTransaction(e) {
+    e.preventDefault();
+    const date = document.getElementById('dr-date-selector').value;
+    const type = document.getElementById('dr-type').value;
+    const amount = document.getElementById('dr-amount').value;
+    const paymentMethod = document.getElementById('dr-payment-method').value;
+    const description = document.getElementById('dr-description').value;
+    const photoFile = document.getElementById('dr-photo').files[0];
+    
+    const formData = new FormData();
+    formData.append('date', date);
+    formData.append('type', type);
+    formData.append('amount', amount);
+    formData.append('payment_method', paymentMethod);
+    formData.append('description', description);
+    if (photoFile) {
+        formData.append('photo', photoFile);
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/api/daily-transactions`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: formData
+        });
+        
+        await safeResponseJSON(response, 'Error al guardar el movimiento diario');
+        
+        document.getElementById('daily-register-form').reset();
+        loadDailyTransactions();
+        Alert.success('Movimiento registrado correctamente.');
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+async function handleDeleteDailyTransaction(id) {
+    if (!await Alert.confirm('¿Eliminar este movimiento de caja diaria?')) return;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/daily-transactions/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${state.token}`
+            }
+        });
+        
+        await safeResponseJSON(response, 'Error al eliminar el movimiento diario');
+        loadDailyTransactions();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+window.handleDeleteDailyTransaction = handleDeleteDailyTransaction;
+
+function downloadDailyPDFReport() {
+    if (state.dailyTransactions.length === 0) {
+        Alert.warning('No hay movimientos para generar el cierre de caja.');
+        return;
+    }
+    
+    const dateStr = document.getElementById('dr-date-selector').value;
+    const formattedDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('es-AR');
+    
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    doc.setFontSize(18);
+    doc.setTextColor(217, 119, 6); // Primary color
+    doc.text(`Tutto Passa - Cierre de Caja Diaria`, 14, 20);
+    
+    doc.setFontSize(12);
+    doc.setTextColor(55, 65, 81); // Text color
+    doc.text(`Fecha: ${formattedDate}`, 14, 30);
+    
+    let totalIncome = 0;
+    let totalExpense = 0;
+    
+    const tableData = state.dailyTransactions.map(t => {
+        const isIncome = t.type === 'income';
+        const amt = parseFloat(t.amount);
+        if (isIncome) totalIncome += amt;
+        else totalExpense += amt;
+        
+        return [
+            isIncome ? 'Ingreso' : 'Egreso',
+            t.payment_method,
+            t.description || '-',
+            isIncome ? `+$${amt.toLocaleString('es-AR', {minimumFractionDigits: 2})}` : `-$${amt.toLocaleString('es-AR', {minimumFractionDigits: 2})}`
+        ];
+    });
+    
+    const balance = totalIncome - totalExpense;
+    
+    doc.autoTable({
+        startY: 40,
+        head: [['Tipo', 'Método', 'Descripción', 'Monto']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [217, 119, 6] },
+        styles: { fontSize: 10 }
+    });
+    
+    const finalY = doc.lastAutoTable.finalY || 40;
+    
+    doc.setFontSize(11);
+    doc.setTextColor(16, 185, 129); // Success
+    doc.text(`Total Ingresos: $${totalIncome.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 10);
+    
+    doc.setTextColor(239, 68, 68); // Danger
+    doc.text(`Total Egresos: $${totalExpense.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 17);
+    
+    doc.setFontSize(14);
+    doc.setTextColor(31, 41, 55); // Dark text
+    doc.text(`Balance Neto: $${balance.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 27);
+    
+    doc.save(`Cierre_Caja_${dateStr}.pdf`);
 }

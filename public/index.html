@@ -100,6 +100,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
                     Tarjetas
                 </button>
+                <button class="nav-item" data-view="daily-register">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+                    Caja Diaria
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -237,6 +241,111 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         Descargar PDF
                     </button>
+                </div>
+            </section>
+
+            <!-- CONTENIDO DE LA VISTA: CAJA DIARIA -->
+            <section id="view-daily-register" class="content-view hide">
+                <div class="metrics-grid" style="margin-bottom: 2rem;">
+                    <div class="metric-card card-income">
+                        <div class="metric-info">
+                            <span>Ingresos del Día</span>
+                            <h3 id="dr-metric-income">$0.00</h3>
+                        </div>
+                        <div class="metric-icon">▲</div>
+                    </div>
+                    <div class="metric-card card-expense">
+                        <div class="metric-info">
+                            <span>Egresos del Día</span>
+                            <h3 id="dr-metric-expense">$0.00</h3>
+                        </div>
+                        <div class="metric-icon">▼</div>
+                    </div>
+                    <div class="metric-card card-balance">
+                        <div class="metric-info">
+                            <span>Balance de Caja</span>
+                            <h3 id="dr-metric-balance">$0.00</h3>
+                        </div>
+                        <div class="metric-icon">⚖</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid grid-form-table">
+                    <!-- Formulario Nuevo Movimiento Diario -->
+                    <div class="card-panel">
+                        <div class="panel-header">
+                            <h3>Nuevo Movimiento de Caja</h3>
+                        </div>
+                        <form id="daily-register-form">
+                            <div class="form-group">
+                                <label for="dr-type">Tipo de Movimiento</label>
+                                <select id="dr-type" required>
+                                    <option value="" disabled selected>Selecciona tipo</option>
+                                    <option value="income">Ingreso</option>
+                                    <option value="expense">Egreso / Gasto</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="dr-amount">Importe ($)</label>
+                                <input type="number" step="0.01" id="dr-amount" placeholder="0.00" required min="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label for="dr-payment-method">Método (Acreditación / Débito)</label>
+                                <select id="dr-payment-method" required>
+                                    <option value="" disabled selected>Selecciona método</option>
+                                    <option value="Mercado Pago">Mercado Pago</option>
+                                    <option value="Payway">Payway</option>
+                                    <option value="Efectivo">Efectivo</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="dr-description">Descripción (Opcional)</label>
+                                <input type="text" id="dr-description" placeholder="Ej: Venta mañana, Compra insumos...">
+                            </div>
+                            <div class="form-group">
+                                <label for="dr-photo">Foto / Comprobante (Opcional)</label>
+                                <input type="file" id="dr-photo" accept="image/*,application/pdf">
+                            </div>
+                            <button type="submit" class="btn-primary btn-block">Registrar Movimiento</button>
+                        </form>
+                    </div>
+
+                    <!-- Listado de Movimientos Diarios y Cierre -->
+                    <div class="card-panel" style="flex: 2;">
+                        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h3>Movimientos del Día</h3>
+                                <span id="dr-current-date-display">Fecha</span>
+                            </div>
+                            <button class="btn-danger" id="dr-close-btn" style="padding: 0.5rem 1rem;">
+                                Cerrar Caja del Día
+                            </button>
+                        </div>
+                        
+                        <!-- Selector de Fecha para ver días anteriores -->
+                        <div style="margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem;">
+                            <label for="dr-date-selector">Ver caja del día:</label>
+                            <input type="date" id="dr-date-selector" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-color);">
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Método</th>
+                                        <th>Descripción</th>
+                                        <th>Importe</th>
+                                        <th>Foto</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="daily-transactions-tbody">
+                                    <!-- Filas dinámicas -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -748,9 +857,19 @@
 
                     <!-- Listado de Tarjetas -->
                     <div class="card-panel" style="flex: 2;">
-                        <div class="panel-header">
-                            <h3>Control de Cuotas de Tarjeta</h3>
-                            <span>Seguimiento de compras</span>
+                        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h3>Control de Cuotas de Tarjeta</h3>
+                                <span>Seguimiento de compras</span>
+                            </div>
+                            <select id="filter-cc-installments" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-color);">
+                                <option value="">Todas las cuotas</option>
+                                <option value="1">1 Cuota</option>
+                                <option value="3">3 Cuotas</option>
+                                <option value="6">6 Cuotas</option>
+                                <option value="12">12 Cuotas</option>
+                                <option value="18">18 Cuotas</option>
+                            </select>
                         </div>
                         <div class="table-responsive">
                             <table class="data-table">

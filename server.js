@@ -1104,6 +1104,80 @@ app.get('/api/settlements', authenticateToken, async (req, res) => {
   }
 });
 
+// --- RUTAS DE CAJA DIARIA ---
+app.get('/api/daily-transactions', authenticateToken, async (req, res) => {
+  const { date } = req.query; // Formato YYYY-MM-DD
+  if (!date) {
+    return res.status(400).json({ error: 'La fecha es obligatoria (formato YYYY-MM-DD).' });
+  }
+  try {
+    const transactions = await db.query('SELECT * FROM daily_transactions WHERE date = ? ORDER BY id DESC', [date]);
+    res.json(transactions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al consultar caja diaria.' });
+  }
+});
+
+app.post('/api/daily-transactions', authenticateToken, upload.single('photo'), async (req, res) => {
+  const { type, amount, payment_method, description, date } = req.body;
+  if (!type || !amount || !payment_method || !date) {
+    return res.status(400).json({ error: 'Tipo, monto, método y fecha son obligatorios.' });
+  }
+  
+  const numericAmount = parseFloat(amount);
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    return res.status(400).json({ error: 'El monto debe ser un número mayor a cero.' });
+  }
+
+  try {
+    const photoPath = req.file ? '/uploads/' + req.file.filename : null;
+    const result = await db.query(
+      'INSERT INTO daily_transactions (type, amount, payment_method, description, photo_path, date) VALUES (?, ?, ?, ?, ?, ?)',
+      [type, numericAmount, payment_method, description || '', photoPath, date]
+    );
+
+    res.status(201).json({
+      message: 'Transacción diaria registrada con éxito.',
+      transaction: {
+        id: result.insertId,
+        type,
+        amount: numericAmount,
+        payment_method,
+        description,
+        photo_path: photoPath,
+        date
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al registrar la transacción diaria.' });
+  }
+});
+
+app.delete('/api/daily-transactions/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const tx = await db.query('SELECT photo_path FROM daily_transactions WHERE id = ?', [id]);
+    if (tx.length === 0) {
+      return res.status(404).json({ error: 'Transacción no encontrada.' });
+    }
+    
+    if (tx[0].photo_path) {
+      const fullPhotoPath = path.join(__dirname, 'public', tx[0].photo_path);
+      if (fs.existsSync(fullPhotoPath)) {
+        fs.unlinkSync(fullPhotoPath);
+      }
+    }
+    
+    await db.query('DELETE FROM daily_transactions WHERE id = ?', [id]);
+    res.json({ message: 'Transacción diaria eliminada.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar la transacción.' });
+  }
+});
+
 // Fallback para servir el Frontend en cualquier otra ruta (SPA)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
