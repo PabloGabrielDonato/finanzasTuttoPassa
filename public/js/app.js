@@ -289,6 +289,12 @@ function initEventListeners() {
     const drOpenCloseModalBtn = document.getElementById('dr-open-close-modal-btn');
     if (drOpenCloseModalBtn) drOpenCloseModalBtn.addEventListener('click', openDrCloseModal);
     
+    const countedCash = document.getElementById('dr-counted-cash');
+    if (countedCash) countedCash.addEventListener('input', updateDrDifferenceDisplay);
+    
+    const nextDayCash = document.getElementById('dr-next-day-cash');
+    if (nextDayCash) nextDayCash.addEventListener('input', updateDrDifferenceDisplay);
+    
     const closeDrModalBtn = document.getElementById('close-dr-modal-btn');
     if (closeDrModalBtn) closeDrModalBtn.addEventListener('click', () => document.getElementById('dr-close-modal').classList.add('hide'));
     
@@ -1189,6 +1195,17 @@ function populateEmployeeDropdowns() {
             opt.value = emp.id;
             opt.textContent = `${emp.name} (${emp.is_partner ? 'Socio' : 'Empleado'})`;
             drEmpSelect.appendChild(opt);
+        });
+    }
+
+    const withdrawalPartnerSelect = document.getElementById('dr-withdrawal-partner');
+    if (withdrawalPartnerSelect) {
+        withdrawalPartnerSelect.innerHTML = '<option value="">Nadie / Queda en el negocio</option>';
+        state.employees.filter(emp => emp.is_partner).forEach(emp => {
+            const opt = document.createElement('option');
+            opt.value = emp.id;
+            opt.textContent = emp.name;
+            withdrawalPartnerSelect.appendChild(opt);
         });
     }
 }
@@ -2303,16 +2320,65 @@ window.handleDeleteDailyTransaction = handleDeleteDailyTransaction;
 function openDrCloseModal() {
     document.getElementById('dr-close-form').reset();
     document.getElementById('dr-difference-display').classList.add('hide');
+    document.getElementById('dr-withdrawal-partner').value = '';
+    
+    let gross = 0;
+    let net = 0;
+    let cashIn = 0, cashOut = 0;
+    let mpIn = 0, mpOut = 0;
+    let pwIn = 0, pwOut = 0;
+    
+    state.dailyTransactions.forEach(t => {
+        const amt = parseFloat(t.amount);
+        if (t.type === 'income') {
+            gross += amt;
+            net += amt;
+            if (t.payment_method === 'Efectivo') cashIn += amt;
+            if (t.payment_method === 'Mercado Pago') mpIn += amt;
+            if (t.payment_method === 'Payway') pwIn += amt;
+        } else {
+            net -= amt;
+            if (t.payment_method === 'Efectivo') cashOut += amt;
+            if (t.payment_method === 'Mercado Pago') mpOut += amt;
+            if (t.payment_method === 'Payway') pwOut += amt;
+        }
+    });
+    
+    const cashNet = cashIn - cashOut;
+    const virtualNet = (mpIn - mpOut) + (pwIn - pwOut);
+    
+    document.getElementById('dr-modal-gross').textContent = `$${gross.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+    document.getElementById('dr-modal-net').textContent = `$${net.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+    document.getElementById('dr-modal-cash-net').textContent = `$${cashNet.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+    document.getElementById('dr-modal-virtual-net').textContent = `$${virtualNet.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+    document.getElementById('dr-modal-mp').textContent = `$${(mpIn - mpOut).toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+    document.getElementById('dr-modal-pw').textContent = `$${(pwIn - pwOut).toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+    
     const expected = getExpectedCash();
     document.getElementById('dr-modal-expected-cash').textContent = `$${expected.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
     document.getElementById('dr-close-modal').classList.remove('hide');
+    updateDrDifferenceDisplay();
 }
 
 function updateDrDifferenceDisplay() {
     const counted = parseFloat(document.getElementById('dr-counted-cash').value) || 0;
+    const nextDayCash = parseFloat(document.getElementById('dr-next-day-cash').value) || 0;
+    
+    // Diferencia de arqueo
     const expected = getExpectedCash();
     const diff = counted - expected;
     const diffEl = document.getElementById('dr-difference-display');
+    
+    // Retiro de dinero
+    const takeHome = Math.max(0, counted - nextDayCash);
+    const takeHomeEl = document.getElementById('dr-take-home-cash');
+    if (takeHomeEl) {
+        takeHomeEl.textContent = `$${takeHome.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+    }
+    
+    if (document.getElementById('dr-withdrawal-partner')) {
+        document.getElementById('dr-withdrawal-partner').disabled = takeHome <= 0;
+    }
     
     diffEl.classList.remove('hide', 'alert-success', 'alert-danger', 'alert-warning');
     if (diff === 0) {
@@ -2332,6 +2398,10 @@ async function handleCloseDailyRegister(e) {
     const date = document.getElementById('dr-date-selector').value;
     const counted = parseFloat(document.getElementById('dr-counted-cash').value) || 0;
     const nextDayCash = parseFloat(document.getElementById('dr-next-day-cash').value) || 0;
+    
+    const withdrawalPartnerId = document.getElementById('dr-withdrawal-partner').value;
+    const withdrawalAmount = Math.max(0, counted - nextDayCash);
+    
     const expected = getExpectedCash();
     const difference = counted - expected;
     
@@ -2342,12 +2412,19 @@ async function handleCloseDailyRegister(e) {
                 'Authorization': `Bearer ${state.token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ date, final_cash_counted: counted, difference, next_day_cash: nextDayCash })
+            body: JSON.stringify({ 
+                date, 
+                final_cash_counted: counted, 
+                difference, 
+                next_day_cash: nextDayCash,
+                withdrawal_amount: withdrawalAmount,
+                withdrawal_partner_id: withdrawalPartnerId || null
+            })
         });
         
         await safeResponseJSON(response, 'Error al cerrar la caja');
         document.getElementById('dr-close-modal').classList.add('hide');
-        Alert.success('Caja cerrada correctamente.');
+        Alert.success('Caja cerrada y balance sincronizado.');
         
         if (state.dailyRegister) {
             state.dailyRegister.final_cash_counted = counted;
@@ -2386,12 +2463,24 @@ function downloadDailyPDFReport(diffArg) {
     
     let totalIncome = 0;
     let totalExpense = 0;
+    let cashIn = 0, cashOut = 0;
+    let mpIn = 0, mpOut = 0;
+    let pwIn = 0, pwOut = 0;
     
     const tableData = state.dailyTransactions.map(t => {
         const isIncome = t.type === 'income';
         const amt = parseFloat(t.amount);
-        if (isIncome) totalIncome += amt;
-        else totalExpense += amt;
+        if (isIncome) {
+            totalIncome += amt;
+            if (t.payment_method === 'Efectivo') cashIn += amt;
+            if (t.payment_method === 'Mercado Pago') mpIn += amt;
+            if (t.payment_method === 'Payway') pwIn += amt;
+        } else {
+            totalExpense += amt;
+            if (t.payment_method === 'Efectivo') cashOut += amt;
+            if (t.payment_method === 'Mercado Pago') mpOut += amt;
+            if (t.payment_method === 'Payway') pwOut += amt;
+        }
         
         return [
             isIncome ? 'Ingreso' : 'Egreso',
@@ -2415,12 +2504,30 @@ function downloadDailyPDFReport(diffArg) {
     const expectedCash = getExpectedCash();
     const difference = typeof diffArg === 'number' ? diffArg : (finalCashCounted - expectedCash);
     
+    const netCash = cashIn - cashOut;
+    const netMP = mpIn - mpOut;
+    const netPW = pwIn - pwOut;
+    
+    doc.setFontSize(14);
+    doc.setTextColor(217, 119, 6);
+    doc.text(`Rendimiento del Día`, 14, finalY + 15);
+    
     doc.setFontSize(11);
     doc.setTextColor(31, 41, 55);
-    doc.text(`Total Ingresos: $${totalIncome.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 15);
-    doc.text(`Total Egresos: $${totalExpense.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 22);
+    doc.text(`Ganancia Bruta (Total Ingresos): $${totalIncome.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 25);
+    doc.text(`Total Egresos: $${totalExpense.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 32);
     
-    finalY += 35;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Ganancia Limpia (Neta): $${(totalIncome - totalExpense).toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 14, finalY + 39);
+    doc.setFont('helvetica', 'normal');
+    
+    doc.text(`Ganancia en Efectivo: $${netCash.toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 120, finalY + 25);
+    doc.text(`Billeteras Virtuales: $${(netMP + netPW).toLocaleString('es-AR', {minimumFractionDigits: 2})}`, 120, finalY + 32);
+    doc.setFontSize(9);
+    doc.setTextColor(107, 114, 128);
+    doc.text(`(MP: $${netMP.toLocaleString('es-AR', {minimumFractionDigits:2})} | Payway: $${netPW.toLocaleString('es-AR', {minimumFractionDigits:2})})`, 120, finalY + 38);
+    
+    finalY += 50;
     doc.setFontSize(14);
     doc.setTextColor(217, 119, 6);
     doc.text(`Resumen Físico (Efectivo)`, 14, finalY);
@@ -2444,7 +2551,15 @@ function downloadDailyPDFReport(diffArg) {
     if (state.dailyRegister && state.dailyRegister.next_day_cash !== undefined && state.dailyRegister.next_day_cash !== null) {
         doc.setFontSize(11);
         doc.setTextColor(107, 114, 128); // Gray
-        doc.text(`Fondo Fijo que queda para el siguiente día: $${parseFloat(state.dailyRegister.next_day_cash).toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, finalY + 37);
+        const nextDay = parseFloat(state.dailyRegister.next_day_cash);
+        doc.text(`Fondo Fijo que queda para el siguiente día: $${nextDay.toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, finalY + 37);
+        
+        const takeHome = Math.max(0, finalCashCounted - nextDay);
+        if (takeHome > 0) {
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(217, 119, 6);
+            doc.text(`Dinero Retirado (Efectivo): $${takeHome.toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, finalY + 45);
+        }
     }
     
     doc.save(`Arqueo_Caja_${dateStr}.pdf`);

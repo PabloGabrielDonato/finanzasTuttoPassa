@@ -1120,9 +1120,35 @@
                 <h2>Arqueo y Cierre Físico de Caja</h2>
                 <button class="close-modal" id="close-dr-modal-btn">&times;</button>
             </div>
-            <div class="modal-body">
-                <p>Ingresa cuánto dinero físico cuentas realmente en el cajón para calcular el sobrante o faltante antes de cerrar.</p>
-                <div class="metrics-grid" style="grid-template-columns: 1fr; margin-bottom: 1rem;">
+            <div class="modal-body" style="max-height: 80vh; overflow-y: auto;">
+                <p>Revisa el rendimiento del día e ingresa el dinero físico para hacer el arqueo de caja.</p>
+                
+                <!-- MÉTRICAS DETALLADAS -->
+                <div class="metrics-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 1.5rem; gap: 1rem;">
+                    <div class="metric-card" style="background: var(--bg-color); border: 1px solid var(--border-color); padding: 1rem;">
+                        <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Ganancia Bruta (Total)</span>
+                        <h4 id="dr-modal-gross" style="margin: 0.5rem 0; color: var(--text-color);">$0.00</h4>
+                    </div>
+                    <div class="metric-card" style="background: var(--bg-color); border: 1px solid var(--border-color); padding: 1rem;">
+                        <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Ganancia Limpia (Neta)</span>
+                        <h4 id="dr-modal-net" style="margin: 0.5rem 0; color: var(--text-color);">$0.00</h4>
+                    </div>
+                    <div class="metric-card card-income" style="padding: 1rem;">
+                        <span style="font-size: 0.8rem; text-transform: uppercase;">Ganancia Efectivo</span>
+                        <h4 id="dr-modal-cash-net" style="margin: 0.5rem 0;">$0.00</h4>
+                    </div>
+                    <div class="metric-card" style="background: #eef2ff; border: 1px solid #c7d2fe; padding: 1rem;">
+                        <span style="font-size: 0.8rem; color: #4338ca; text-transform: uppercase;">Billeteras Virtuales</span>
+                        <h4 id="dr-modal-virtual-net" style="margin: 0.5rem 0; color: #3730a3;">$0.00</h4>
+                        <div style="font-size: 0.75rem; color: #4f46e5; margin-top: 0.5rem;">
+                            MP: <span id="dr-modal-mp">$0.00</span> | Payway: <span id="dr-modal-pw">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px dashed var(--border-color); margin: 1.5rem 0;">
+
+                <div class="metrics-grid" style="grid-template-columns: 1fr; margin-bottom: 1.5rem;">
                     <div class="metric-card card-balance">
                         <div class="metric-info">
                             <span>Saldo Teórico en Efectivo Esperado</span>
@@ -1141,7 +1167,23 @@
                         <input type="number" id="dr-next-day-cash" step="0.01" min="0" required placeholder="0.00" style="font-size: 1.2rem; padding: 0.8rem;">
                     </div>
                     
-                    <div id="dr-difference-display" class="alert hide" style="margin-top: 1rem;">
+                    <!-- RETIRO DE SOCIO DINÁMICO -->
+                    <div class="card-panel" style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); margin-top: 1.5rem;">
+                        <h4 style="margin-bottom: 0.5rem; color: var(--warning);">Retiro de Dinero</h4>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+                            Dinero sobrante (Físico Contado - Fondo Fijo) que se retirará de la caja: <strong id="dr-take-home-cash" style="font-size: 1.1rem; color: var(--text-color);">$0.00</strong>
+                        </p>
+                        <div class="form-group" id="dr-partner-withdrawal-group">
+                            <label for="dr-withdrawal-partner">¿Quién se lleva este dinero? (Seleccionar Socio)</label>
+                            <select id="dr-withdrawal-partner">
+                                <option value="">Nadie / Queda en el negocio</option>
+                                <!-- Cargado dinámicamente -->
+                            </select>
+                            <small class="text-muted" style="display: block; margin-top: 0.25rem;">Si seleccionas un socio, se creará un egreso en el Balance Global automáticamente.</small>
+                        </div>
+                    </div>
+
+                    <div id="dr-difference-display" class="alert hide" style="margin-top: 1.5rem;">
                         <!-- Diff display -->
                     </div>
 

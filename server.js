@@ -1140,7 +1140,7 @@ app.post('/api/daily-registers/open', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/daily-registers/close', authenticateToken, async (req, res) => {
-  const { date, final_cash_counted, difference, next_day_cash } = req.body;
+  const { date, final_cash_counted, difference, next_day_cash, withdrawal_amount, withdrawal_partner_id } = req.body;
   if (!date || final_cash_counted === undefined) {
     return res.status(400).json({ error: 'Faltan datos para cerrar la caja.' });
   }
@@ -1168,7 +1168,29 @@ app.post('/api/daily-registers/close', authenticateToken, async (req, res) => {
       );
     }
     
-    res.json({ message: 'Caja cerrada y arqueada con éxito.' });
+    // 1. SINCRONIZAR MOVIMIENTOS DIARIOS (LOS QUE AÚN NO SE SINCRONIZARON, EJ. NO SON ADELANTOS)
+    const unsyncedTxs = await db.query('SELECT * FROM daily_transactions WHERE date = ? AND global_transaction_id IS NULL', [date]);
+    for (const tx of unsyncedTxs) {
+      const globalCategory = tx.type === 'income' ? 'Ventas' : 'Otros'; // Ventas por defecto, u Otros para egresos. "Venta Mostrador" no está garantizado en la BD.
+      const desc = `[Caja] ${tx.payment_method} - ${tx.description || 'Movimiento Diario'}`;
+      
+      const insertGlobal = await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, tx.type, tx.amount, globalCategory, desc, tx.date, null]
+      );
+      
+      await db.query('UPDATE daily_transactions SET global_transaction_id = ? WHERE id = ?', [insertGlobal.insertId, tx.id]);
+    }
+    
+    // 2. REGISTRAR RETIRO DE SOCIO SI APLICA
+    if (withdrawal_partner_id && parseFloat(withdrawal_amount) > 0) {
+        await db.query(
+            'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [req.user.id, 'expense', parseFloat(withdrawal_amount), 'Sueldos y Retiros', `Retiro de utilidades desde Caja Diaria`, date, withdrawal_partner_id]
+        );
+    }
+    
+    res.json({ message: 'Caja cerrada, balance sincronizado y arqueada con éxito.' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al cerrar la caja.' });
