@@ -89,7 +89,9 @@ let state = {
     debts: [],
     contributions: [],
     creditCards: [],
-    dailyTransactions: []
+    dailyTransactions: [],
+    orders: [],
+    inventoryProducts: []
 };
 
 // --- INICIALIZACIÓN ---
@@ -267,6 +269,13 @@ function initEventListeners() {
     document.getElementById('close-debt-history-footer-btn').addEventListener('click', () => {
         document.getElementById('debt-history-modal').classList.add('hide');
     });
+    
+    // Pedidos a Proveedores
+    const orderForm = document.getElementById('order-form');
+    if (orderForm) orderForm.addEventListener('submit', handleSaveOrder);
+    
+    // Inventario y Producción
+    initInventoryListeners();
 
     // Caja Diaria
     const drForm = document.getElementById('daily-register-form');
@@ -404,7 +413,9 @@ function switchView(viewName) {
         debts: 'Control de Deudas y Financiación',
         contributions: 'Aportes de Socios',
         'credit-cards': 'Control de Cuotas de Tarjeta',
-        'daily-register': 'Caja Diaria'
+        'daily-register': 'Caja Diaria',
+        orders: 'Gestión de Pedidos a Proveedores',
+        inventory: 'Control de Inventario y Producción'
     };
     document.getElementById('view-title').textContent = titles[viewName] || 'Tutto Passa';
 
@@ -425,6 +436,10 @@ function switchView(viewName) {
         renderCreditCardsTable();
     } else if (viewName === 'daily-register') {
         loadDailyTransactions();
+    } else if (viewName === 'orders') {
+        renderOrdersTable();
+    } else if (viewName === 'inventory') {
+        loadInventoryData();
     }
 }
 
@@ -511,7 +526,18 @@ async function loadData() {
             }
         }
 
-        // 7. Cargar Transacciones
+        // 7. Cargar Pedidos
+        const ordersResponse = await fetch(`${API_URL}/api/orders`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (ordersResponse.ok && ordersResponse.headers.get('content-type')?.includes('application/json')) {
+            state.orders = await ordersResponse.json();
+            if (state.currentView === 'orders') {
+                renderOrdersTable();
+            }
+        }
+
+        // 8. Cargar Transacciones
         const response = await fetch(`${API_URL}/api/transactions?month=${selectedMonth}`, {
             headers: {
                 'Authorization': `Bearer ${state.token}`
@@ -2563,4 +2589,422 @@ function downloadDailyPDFReport(diffArg) {
     }
     
     doc.save(`Arqueo_Caja_${dateStr}.pdf`);
+}
+// --- GESTIÓN DE PEDIDOS ---
+function renderOrdersTable() {
+    const tbody = document.getElementById('orders-tbody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    let totalPending = 0;
+    
+    if (state.orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No hay pedidos registrados</td></tr>';
+    } else {
+        state.orders.forEach(order => {
+            if (order.status === 'pending') {
+                totalPending += parseFloat(order.amount);
+            }
+            
+            const tr = document.createElement('tr');
+            
+            let statusBadge = '';
+            let actionButtons = '';
+            
+            if (order.status === 'pending') {
+                statusBadge = '<span class="status-badge" style="background:#fef3c7; color:#d97706; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Pendiente</span>';
+                actionButtons = `
+                    <button class="btn-icon" style="color: #10b981;" onclick="handleUpdateOrderStatus(${order.id}, 'completed')" title="Marcar como Pagado">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                    </button>
+                    <button class="btn-icon" style="color: #ef4444;" onclick="handleUpdateOrderStatus(${order.id}, 'cancelled')" title="Cancelar">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                `;
+            } else if (order.status === 'completed') {
+                statusBadge = '<span class="status-badge" style="background:#d1fae5; color:#059669; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Pagado</span>';
+            } else {
+                statusBadge = '<span class="status-badge" style="background:#fee2e2; color:#dc2626; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Cancelado</span>';
+            }
+            
+            actionButtons += `
+                <button class="btn-icon text-danger" onclick="handleDeleteOrder(${order.id})" title="Eliminar del registro">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+            `;
+            
+            const expectedDateFormatted = new Date(order.expected_date + 'T00:00:00').toLocaleDateString('es-AR');
+            
+            tr.innerHTML = `
+                <td>${expectedDateFormatted}</td>
+                <td style="font-weight: 500;">${order.order_number}</td>
+                <td style="font-weight: 600; color: #dc2626;">$${parseFloat(order.amount).toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                <td>${statusBadge}</td>
+                <td style="display: flex; gap: 0.5rem; justify-content: center;">${actionButtons}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+    
+    document.getElementById('orders-total-pending').textContent = `$${totalPending.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+}
+
+async function handleSaveOrder(e) {
+    e.preventDefault();
+    const order_number = document.getElementById('or-number').value;
+    const amount = document.getElementById('or-amount').value;
+    const expected_date = document.getElementById('or-expected-date').value;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/orders`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ order_number, amount, expected_date })
+        });
+        
+        await safeResponseJSON(response, 'Error al guardar el pedido');
+        Alert.success('Pedido registrado correctamente');
+        document.getElementById('order-form').reset();
+        loadData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+async function handleUpdateOrderStatus(id, status) {
+    let msg = status === 'completed' 
+        ? '¿Confirmas que este pedido ya fue PAGADO? Se registrará como un Egreso en tu Balance bajo la categoría "PEDIDOS".'
+        : '¿Confirmas que deseas CANCELAR este pedido?';
+        
+    if (!await Alert.confirm(msg, 'Confirmar Acción', 'Sí, continuar')) return;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/orders/${id}/status`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status })
+        });
+        
+        await safeResponseJSON(response, 'Error al actualizar el pedido');
+        Alert.success(status === 'completed' ? 'Pedido marcado como pagado' : 'Pedido cancelado');
+        loadData(); // Recargar todo para que impacte el egreso en el dashboard
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+async function handleDeleteOrder(id) {
+    if (!await Alert.confirm('¿Eliminar este pedido del registro? Si tenía un pago asociado en el balance, se eliminará también.')) return;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/orders/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        
+        await safeResponseJSON(response, 'Error al eliminar el pedido');
+        loadData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+window.handleUpdateOrderStatus = handleUpdateOrderStatus;
+window.handleDeleteOrder = handleDeleteOrder;
+
+// --- INVENTARIO Y PRODUCCIÓN ---
+function initInventoryListeners() {
+    // Tabs
+    const tabs = document.querySelectorAll('#view-inventory .tab-btn');
+    const contents = document.querySelectorAll('#view-inventory .tab-content');
+    
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => {
+                t.classList.remove('active');
+                t.style.borderBottom = 'none';
+                t.style.color = 'var(--text-color)';
+            });
+            contents.forEach(c => c.classList.add('hide'));
+            
+            tab.classList.add('active');
+            tab.style.borderBottom = '3px solid var(--primary-color)';
+            tab.style.color = 'var(--primary-color)';
+            
+            document.getElementById(`tab-${tab.dataset.tab}`).classList.remove('hide');
+        });
+    });
+
+    // Form: Nuevo Producto
+    const prodForm = document.getElementById('product-form');
+    if (prodForm) prodForm.addEventListener('submit', handleSaveProduct);
+    
+    // Form: Ingreso/Ajuste de Stock
+    const stockForm = document.getElementById('stock-form');
+    if (stockForm) stockForm.addEventListener('submit', handleSaveStockMovement);
+    
+    // Form: Cocción
+    const bakingForm = document.getElementById('baking-form');
+    if (bakingForm) bakingForm.addEventListener('submit', handleSaveBaking);
+    
+    // Default dates
+    const today = new Date().toISOString().split('T')[0];
+    if (document.getElementById('stock-date')) document.getElementById('stock-date').value = today;
+    if (document.getElementById('baking-date')) document.getElementById('baking-date').value = today;
+    
+    // Search logic for Stock
+    const stockSearch = document.getElementById('stock-product-search');
+    if (stockSearch) {
+        stockSearch.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            populateStockSelect(term);
+        });
+    }
+
+    // Search logic for Baking
+    const bakingSearch = document.getElementById('baking-product-search');
+    if (bakingSearch) {
+        bakingSearch.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            populateBakingSelect(term);
+        });
+    }
+
+    const stockProductSelect = document.getElementById('stock-product');
+    if (stockProductSelect) {
+        stockProductSelect.addEventListener('change', (e) => {
+            const id = e.target.value;
+            if (!id) {
+                document.getElementById('stock-quantity').value = '';
+                return;
+            }
+            const prod = state.inventoryProducts.find(p => p.id == id);
+            if (prod) {
+                document.getElementById('stock-quantity').value = parseFloat(prod.current_stock);
+                document.getElementById('stock-type').value = 'count'; // Force to 'count' as default for replacing
+            }
+        });
+    }
+}
+
+async function loadInventoryData() {
+    try {
+        const res = await fetch(`${API_URL}/api/inventory/products`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (res.ok) {
+            state.inventoryProducts = await res.json();
+            renderInventoryCatalog();
+            populateStockSelect();
+            populateBakingSelect();
+            renderInventoryBakingTable();
+        }
+    } catch (err) {
+        console.error('Error al cargar inventario:', err);
+    }
+}
+
+function renderInventoryCatalog() {
+    const tbody = document.getElementById('products-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    
+    if (state.inventoryProducts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay productos en el catálogo</td></tr>';
+        return;
+    }
+    
+    state.inventoryProducts.forEach(p => {
+        const tr = document.createElement('tr');
+        const stockStr = parseFloat(p.current_stock).toLocaleString('es-AR', {minimumFractionDigits: 0});
+        tr.innerHTML = `
+            <td>${p.code || '-'}</td>
+            <td style="font-weight:500;">${p.name}</td>
+            <td><span class="status-badge" style="background:#e0f2fe; color:#0284c7; font-size:0.75rem;">${p.category}</span></td>
+            <td style="font-weight:bold; ${p.current_stock < 0 ? 'color:#dc2626;' : (p.current_stock == 0 ? 'color:#9ca3af;' : 'color:#059669;')}">${stockStr}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function populateStockSelect(searchTerm = '') {
+    const selectStock = document.getElementById('stock-product');
+    if (!selectStock) return;
+    
+    const groupedStock = {};
+    const term = searchTerm.toLowerCase().trim();
+
+    state.inventoryProducts.forEach(p => {
+        if (!term || p.name.toLowerCase().includes(term) || p.category.toLowerCase().includes(term)) {
+            if (!groupedStock[p.category]) groupedStock[p.category] = [];
+            groupedStock[p.category].push(p);
+        }
+    });
+    
+    let stockHtml = '<option value="">Seleccione producto...</option>';
+    for (const cat in groupedStock) {
+        stockHtml += `<optgroup label="${cat}">`;
+        groupedStock[cat].forEach(p => {
+            stockHtml += `<option value="${p.id}">${p.name} (Disp: ${parseFloat(p.current_stock).toLocaleString('es-AR', {minimumFractionDigits:0})})</option>`;
+        });
+        stockHtml += `</optgroup>`;
+    }
+    
+    const prevVal = selectStock.value;
+    selectStock.innerHTML = stockHtml;
+    if (prevVal && selectStock.querySelector(`option[value="${prevVal}"]`)) {
+        selectStock.value = prevVal;
+    }
+}
+
+function populateBakingSelect(searchTerm = '') {
+    const selectBaking = document.getElementById('baking-product');
+    if (!selectBaking) return;
+    
+    const groupedBaking = {};
+    const term = searchTerm.toLowerCase().trim();
+
+    state.inventoryProducts.forEach(p => {
+        if (!term || p.name.toLowerCase().includes(term) || p.category.toLowerCase().includes(term)) {
+            if (!groupedBaking[p.category]) groupedBaking[p.category] = [];
+            groupedBaking[p.category].push(p);
+        }
+    });
+    
+    let bakingHtml = '<option value="">Seleccione producto...</option>';
+    for (const cat in groupedBaking) {
+        bakingHtml += `<optgroup label="${cat}">`;
+        groupedBaking[cat].forEach(p => {
+            bakingHtml += `<option value="${p.id}">${p.name} (Disp: ${parseFloat(p.current_stock).toLocaleString('es-AR', {minimumFractionDigits:0})})</option>`;
+        });
+        bakingHtml += `</optgroup>`;
+    }
+    
+    const prevVal = selectBaking.value;
+    selectBaking.innerHTML = bakingHtml;
+    if (prevVal && selectBaking.querySelector(`option[value="${prevVal}"]`)) {
+        selectBaking.value = prevVal;
+    }
+}
+
+function renderInventoryBakingTable() {
+    const tbody = document.getElementById('baking-stock-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    
+    // Filtrar solo productos con stock > 0, u opcionalmente mostrar todos. Mostremos todos ordenados.
+    const products = state.inventoryProducts.filter(p => p.current_stock > 0);
+    
+    if (products.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No hay productos con stock disponible</td></tr>';
+        return;
+    }
+    
+    products.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><span class="status-badge" style="background:#e0f2fe; color:#0284c7; font-size:0.75rem;">${p.category}</span></td>
+            <td style="font-weight:500;">${p.name}</td>
+            <td style="font-weight:bold; color:#059669;">${parseFloat(p.current_stock).toLocaleString('es-AR', {minimumFractionDigits: 0})}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function handleSaveProduct(e) {
+    e.preventDefault();
+    const code = document.getElementById('prod-code').value;
+    const name = document.getElementById('prod-name').value;
+    const category = document.getElementById('prod-category').value;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/inventory/products`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ code, name, category })
+        });
+        
+        await safeResponseJSON(response, 'Error al guardar el producto');
+        Alert.success('Producto añadido al catálogo');
+        document.getElementById('product-form').reset();
+        loadInventoryData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+async function handleSaveStockMovement(e) {
+    e.preventDefault();
+    const product_id = document.getElementById('stock-product').value;
+    const quantity = parseFloat(document.getElementById('stock-quantity').value);
+    const date = document.getElementById('stock-date').value;
+    const type = document.getElementById('stock-type').value; // delivery, count, adjustment
+    
+    if (!product_id) return Alert.error('Seleccione un producto');
+    
+    // Si el tipo es 'count' (Recuento), la lógica de un sistema avanzado reemplazaría el stock.
+    // Para simplificar: le avisamos al usuario que este es un ajuste diferencial, o lo calculamos aquí:
+    let finalQuantity = quantity;
+    if (type === 'count') {
+        const prod = state.inventoryProducts.find(p => p.id == product_id);
+        const current = prod ? parseFloat(prod.current_stock) : 0;
+        finalQuantity = quantity - current; // La diferencia para que quede en 'quantity'
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/inventory/movements`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ product_id, quantity: finalQuantity, type: type === 'count' ? 'adjustment' : type, date })
+        });
+        
+        await safeResponseJSON(response, 'Error al actualizar el stock');
+        Alert.success('Stock actualizado correctamente');
+        document.getElementById('stock-form').reset();
+        document.getElementById('stock-date').value = new Date().toISOString().split('T')[0];
+        loadInventoryData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+async function handleSaveBaking(e) {
+    e.preventDefault();
+    const product_id = document.getElementById('baking-product').value;
+    const quantity = parseFloat(document.getElementById('baking-quantity').value); // será positiva en el input
+    const date = document.getElementById('baking-date').value;
+    const shift = document.getElementById('baking-shift').value;
+    
+    if (!product_id) return Alert.error('Seleccione un producto a hornear');
+    
+    try {
+        const response = await fetch(`${API_URL}/api/inventory/movements`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ product_id, quantity: -quantity, type: 'baking', shift, date })
+        });
+        
+        await safeResponseJSON(response, 'Error al registrar la cocción');
+        Alert.success('Cocción registrada. Stock descontado.');
+        document.getElementById('baking-form').reset();
+        document.getElementById('baking-date').value = new Date().toISOString().split('T')[0];
+        loadInventoryData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
 }

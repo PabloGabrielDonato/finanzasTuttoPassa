@@ -97,13 +97,45 @@ CREATE TABLE IF NOT EXISTS daily_registers (
 
 CREATE TABLE IF NOT EXISTS daily_transactions (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    date DATE NOT NULL,
     type ENUM('income', 'expense') NOT NULL,
     amount DECIMAL(12, 2) NOT NULL,
-    payment_method VARCHAR(50) NOT NULL,
+    payment_method ENUM('Efectivo', 'Mercado Pago', 'Payway') NOT NULL,
     description TEXT,
-    photo_path VARCHAR(255) NULL,
+    employee_id INT NULL,
     global_transaction_id INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL,
+    FOREIGN KEY (global_transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    order_number VARCHAR(255) NOT NULL,
+    amount DECIMAL(12, 2) NOT NULL,
+    expected_date DATE NOT NULL,
+    status ENUM('pending', 'completed', 'cancelled') NOT NULL DEFAULT 'pending',
+    transaction_id INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS products (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(50) UNIQUE NULL,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT NOT NULL,
+    quantity DECIMAL(10,2) NOT NULL,
+    type ENUM('count', 'baking', 'adjustment', 'delivery') NOT NULL,
+    shift ENUM('morning', 'afternoon') NULL,
     date DATE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (global_transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );

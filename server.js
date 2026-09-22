@@ -1298,6 +1298,150 @@ app.delete('/api/daily-transactions/:id', authenticateToken, async (req, res) =>
   }
 });
 
+// --- RUTAS DE PEDIDOS ---
+app.get('/api/orders', authenticateToken, async (req, res) => {
+  try {
+    const orders = await db.query('SELECT * FROM orders ORDER BY expected_date ASC');
+    res.json(orders);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener pedidos' });
+  }
+});
+
+app.post('/api/orders', authenticateToken, async (req, res) => {
+  const { order_number, amount, expected_date } = req.body;
+  if (!order_number || !amount || !expected_date) {
+    return res.status(400).json({ error: 'Faltan datos obligatorios' });
+  }
+  try {
+    const result = await db.query(
+      'INSERT INTO orders (order_number, amount, expected_date) VALUES (?, ?, ?)',
+      [order_number, parseFloat(amount), expected_date]
+    );
+    res.status(201).json({ id: result.insertId, order_number, amount, expected_date, status: 'pending' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al crear el pedido' });
+  }
+});
+
+app.put('/api/orders/:id/status', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // 'completed' or 'cancelled'
+  
+  if (!['completed', 'cancelled'].includes(status)) {
+    return res.status(400).json({ error: 'Estado inválido' });
+  }
+  
+  try {
+    const orders = await db.query('SELECT * FROM orders WHERE id = ?', [id]);
+    if (orders.length === 0) return res.status(404).json({ error: 'Pedido no encontrado' });
+    const order = orders[0];
+    
+    if (order.status !== 'pending') {
+      return res.status(400).json({ error: 'El pedido ya no está pendiente' });
+    }
+    
+    let transactionId = null;
+    if (status === 'completed') {
+      // Create expense transaction
+      const desc = `Pago de Pedido: ${order.order_number}`;
+      const insertResult = await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, 'expense', order.amount, 'PEDIDOS', desc, new Date().toISOString().split('T')[0], null]
+      );
+      transactionId = insertResult.insertId;
+    }
+    
+    await db.query('UPDATE orders SET status = ?, transaction_id = ? WHERE id = ?', [status, transactionId, id]);
+    res.json({ message: 'Estado del pedido actualizado' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar el estado' });
+  }
+});
+
+app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const orders = await db.query('SELECT * FROM orders WHERE id = ?', [id]);
+    if (orders.length === 0) return res.status(404).json({ error: 'Pedido no encontrado' });
+    
+    // We optionally could delete the associated transaction if we want cascading logic, 
+    // but usually deleting the order just deletes the order (DB FK is SET NULL).
+    // Given user preference, deleting the order is just for cleaning up mistakes.
+    if (orders[0].transaction_id) {
+        await db.query('DELETE FROM transactions WHERE id = ?', [orders[0].transaction_id]);
+    }
+    
+    await db.query('DELETE FROM orders WHERE id = ?', [id]);
+    res.json({ message: 'Pedido eliminado' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar pedido' });
+  }
+});
+
+// --- RUTAS DE INVENTARIO Y PRODUCCIÓN ---
+app.get('/api/inventory/products', authenticateToken, async (req, res) => {
+  try {
+    const products = await db.query(`
+      SELECT p.*, COALESCE(SUM(sm.quantity), 0) AS current_stock 
+      FROM products p 
+      LEFT JOIN stock_movements sm ON p.id = sm.product_id 
+      GROUP BY p.id
+      ORDER BY p.category ASC, p.name ASC
+    `);
+    res.json(products);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener productos y stock' });
+  }
+});
+
+app.post('/api/inventory/products', authenticateToken, async (req, res) => {
+  const { code, name, category } = req.body;
+  if (!name || !category) return res.status(400).json({ error: 'Nombre y categoría obligatorios' });
+  try {
+    const result = await db.query('INSERT INTO products (code, name, category) VALUES (?, ?, ?)', [code || null, name, category]);
+    res.status(201).json({ id: result.insertId, code, name, category, current_stock: 0 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al crear producto' });
+  }
+});
+
+app.post('/api/inventory/movements', authenticateToken, async (req, res) => {
+  const { product_id, quantity, type, shift, date } = req.body;
+  if (!product_id || quantity === undefined || !type || !date) {
+    return res.status(400).json({ error: 'Faltan datos obligatorios para el movimiento' });
+  }
+  
+  try {
+    const numQuantity = parseFloat(quantity);
+    
+    // Validar que no quede en negativo si es un descuento (ej. coccion o ajuste negativo)
+    if (numQuantity < 0) {
+      const stock = await db.query('SELECT COALESCE(SUM(quantity), 0) as current_stock FROM stock_movements WHERE product_id = ?', [product_id]);
+      const currentStock = stock.length > 0 ? parseFloat(stock[0].current_stock) : 0;
+      
+      if (currentStock + numQuantity < 0) {
+        return res.status(400).json({ error: 'Stock insuficiente. La operación dejaría el stock en negativo.' });
+      }
+    }
+    
+    await db.query(
+      'INSERT INTO stock_movements (product_id, quantity, type, shift, date) VALUES (?, ?, ?, ?, ?)',
+      [product_id, numQuantity, type, shift || null, date]
+    );
+    res.json({ message: 'Movimiento registrado con éxito' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al registrar el movimiento de stock' });
+  }
+});
+
 // Fallback para servir el Frontend en cualquier otra ruta (SPA)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

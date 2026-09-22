@@ -104,6 +104,14 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
                     Caja Diaria
                 </button>
+                <button class="nav-item" data-view="orders">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    Pedidos
+                </button>
+                <button class="nav-item" data-view="inventory">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16.2A2 2 0 0 0 21.73 15L23 11a2 2 0 0 0-1.73-2.6h-5L14 3a2 2 0 0 0-3.46 0L8.27 8.4H3.27A2 2 0 0 0 1.54 11l1.27 4a2 2 0 0 0 1.73 1.2h15z"></path></svg>
+                    Inventario y Prod.
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -929,6 +937,204 @@
                                     <!-- Filas dinámicas -->
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VISTA: PEDIDOS A PROVEEDORES -->
+            <section id="view-orders" class="content-view hide">
+                <div class="metrics-grid" style="margin-bottom: 2rem;">
+                    <div class="metric-card card-expense">
+                        <div class="metric-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                        </div>
+                        <div class="metric-info">
+                            <span>Previsión Total Pendiente</span>
+                            <h3 id="orders-total-pending">$0.00</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex-row" style="gap: 1.5rem; align-items: flex-start; flex-wrap: wrap;">
+                    <div class="card-panel" style="flex: 1; min-width: 300px;">
+                        <div class="panel-header">
+                            <h3>Nuevo Pedido</h3>
+                            <span>Registrar previsión de gasto</span>
+                        </div>
+                        <form id="order-form" class="custom-form">
+                            <div class="form-group">
+                                <label for="or-number">Número/Nombre del Pedido</label>
+                                <input type="text" id="or-number" required placeholder="Ej: Pedido Harina #1234">
+                            </div>
+                            <div class="form-group">
+                                <label for="or-amount">Importe ($)</label>
+                                <input type="number" id="or-amount" step="0.01" required placeholder="0.00">
+                            </div>
+                            <div class="form-group">
+                                <label for="or-expected-date">Fecha esperada de pago</label>
+                                <input type="date" id="or-expected-date" required>
+                            </div>
+                            <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">Guardar Pedido</button>
+                        </form>
+                    </div>
+
+                    <div class="card-panel" style="flex: 2; min-width: 400px;">
+                        <div class="panel-header">
+                            <h3>Listado de Pedidos</h3>
+                            <span>Pedidos pendientes y completados</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Detalle</th>
+                                        <th>Importe</th>
+                                        <th>Estado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="orders-tbody">
+                                    <!-- Dinámico -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VISTA: INVENTARIO Y PRODUCCIÓN -->
+            <section id="view-inventory" class="content-view hide">
+                <!-- Pestañas internas -->
+                <div class="tabs-header" style="margin-bottom: 2rem; border-bottom: 2px solid var(--border-color); display: flex; gap: 1rem;">
+                    <button class="tab-btn active" data-tab="catalog" style="background: none; border: none; padding: 1rem; font-weight: 600; cursor: pointer; color: var(--primary-color); border-bottom: 3px solid var(--primary-color);">Catálogo</button>
+                    <button class="tab-btn" data-tab="stock" style="background: none; border: none; padding: 1rem; font-weight: 600; cursor: pointer; color: var(--text-color);">Carga de Stock</button>
+                    <button class="tab-btn" data-tab="baking" style="background: none; border: none; padding: 1rem; font-weight: 600; cursor: pointer; color: var(--text-color);">Cocción</button>
+                </div>
+
+                <!-- Tab 1: Catálogo -->
+                <div id="tab-catalog" class="tab-content">
+                    <div class="flex-row" style="gap: 1.5rem; align-items: flex-start; flex-wrap: wrap;">
+                        <div class="card-panel" style="flex: 1; min-width: 300px;">
+                            <div class="panel-header">
+                                <h3>Nuevo Producto</h3>
+                                <span>Añadir al catálogo</span>
+                            </div>
+                            <form id="product-form" class="custom-form">
+                                <div class="form-group">
+                                    <label>Código (opcional)</label>
+                                    <input type="text" id="prod-code" placeholder="Ej: 100">
+                                </div>
+                                <div class="form-group">
+                                    <label>Artículo</label>
+                                    <input type="text" id="prod-name" required placeholder="Ej: Medialuna Dulce">
+                                </div>
+                                <div class="form-group">
+                                    <label>Categoría</label>
+                                    <input type="text" id="prod-category" required placeholder="Ej: Masa Dulce">
+                                </div>
+                                <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">Guardar Producto</button>
+                            </form>
+                        </div>
+                        <div class="card-panel" style="flex: 2; min-width: 400px;">
+                            <div class="panel-header">
+                                <h3>Catálogo Actual</h3>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead><tr><th>Cód.</th><th>Artículo</th><th>Categoría</th><th>Stock Actual</th></tr></thead>
+                                    <tbody id="products-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Stock -->
+                <div id="tab-stock" class="tab-content hide">
+                    <div class="card-panel" style="max-width: 600px; margin: 0 auto;">
+                        <div class="panel-header">
+                            <h3>Ingresar Mercadería / Ajuste</h3>
+                            <span>Sumar o restar stock a un producto</span>
+                        </div>
+                        <form id="stock-form" class="custom-form">
+                            <div class="form-group">
+                                <label>Buscar y Seleccionar Producto</label>
+                                <input type="text" id="stock-product-search" placeholder="Escribe para filtrar productos..." style="margin-bottom: 0.5rem;">
+                                <select id="stock-product" required size="5" style="overflow-y: auto;">
+                                    <option value="">Seleccione producto...</option>
+                                </select>
+                            </div>
+                            <div class="form-row" style="display: flex; gap: 1rem;">
+                                <div class="form-group" style="flex:1;">
+                                    <label>Stock Total (Modificar cantidad final)</label>
+                                    <input type="number" id="stock-quantity" step="0.01" required>
+                                </div>
+                                <div class="form-group" style="flex:1;">
+                                    <label>Fecha</label>
+                                    <input type="date" id="stock-date" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo de Movimiento</label>
+                                <select id="stock-type" required>
+                                    <option value="delivery">Llegada de Proveedor (Ingreso)</option>
+                                    <option value="count">Recuento de Stock / Carga Inicial</option>
+                                    <option value="adjustment">Ajuste por merma/error</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">Registrar Movimiento</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Cocción -->
+                <div id="tab-baking" class="tab-content hide">
+                    <div class="flex-row" style="gap: 1.5rem; align-items: flex-start; flex-wrap: wrap;">
+                        <div class="card-panel" style="flex: 1; min-width: 300px;">
+                            <div class="panel-header">
+                                <h3>Planilla de Cocción</h3>
+                                <span>Descuenta stock automáticamente</span>
+                            </div>
+                            <form id="baking-form" class="custom-form">
+                            <div class="form-group">
+                                <label>Buscar y Seleccionar Producto a hornear</label>
+                                <input type="text" id="baking-product-search" placeholder="Escribe para filtrar productos..." style="margin-bottom: 0.5rem;">
+                                <select id="baking-product" required size="5" style="overflow-y: auto;">
+                                    <option value="">Seleccione producto...</option>
+                                </select>
+                            </div>
+                            <div class="form-row" style="display: flex; gap: 1rem;">
+                                    <div class="form-group" style="flex:1;">
+                                        <label>Cantidad Horneada</label>
+                                        <input type="number" id="baking-quantity" step="0.01" min="0.01" required>
+                                    </div>
+                                    <div class="form-group" style="flex:1;">
+                                        <label>Fecha</label>
+                                        <input type="date" id="baking-date" required>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Turno</label>
+                                    <select id="baking-shift" required>
+                                        <option value="morning">T. Mañana</option>
+                                        <option value="afternoon">T. Tarde</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn-success" style="width: 100%; margin-top: 1rem;">Registrar Cocción</button>
+                            </form>
+                        </div>
+                        <div class="card-panel" style="flex: 2; min-width: 400px;">
+                            <div class="panel-header">
+                                <h3>Stock Disponible para Cocinar</h3>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead><tr><th>Categoría</th><th>Artículo</th><th>Stock Actual</th></tr></thead>
+                                    <tbody id="baking-stock-tbody"></tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
