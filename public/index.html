@@ -189,6 +189,13 @@
                         </div>
                         <div class="metric-icon" style="color: #eba12a;">🔮</div>
                     </div>
+                    <div class="metric-card" style="background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.02)); border-color: rgba(16,185,129,0.3);">
+                        <div class="metric-info">
+                            <span style="color: #059669;">Caja de Seguridad</span>
+                            <h3 id="metric-safe-box" style="color: #059669;">$0.00</h3>
+                        </div>
+                        <div class="metric-icon" style="color: #059669;">🛡️</div>
+                    </div>
                 </div>
 
                 <!-- Gráficos & Acciones -->
@@ -1373,19 +1380,19 @@
                         <input type="number" id="dr-next-day-cash" step="0.01" min="0" required placeholder="0.00" style="font-size: 1.2rem; padding: 0.8rem;">
                     </div>
                     
-                    <!-- RETIRO DE SOCIO DINÁMICO -->
+                    <!-- ENVÍO A CAJA DE SEGURIDAD -->
                     <div class="card-panel" style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); margin-top: 1.5rem;">
-                        <h4 style="margin-bottom: 0.5rem; color: var(--warning);">Retiro de Dinero</h4>
+                        <h4 style="margin-bottom: 0.5rem; color: var(--warning);">Envío a Caja de Seguridad</h4>
                         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
-                            Dinero sobrante (Físico Contado - Fondo Fijo) que se retirará de la caja: <strong id="dr-take-home-cash" style="font-size: 1.1rem; color: var(--text-color);">$0.00</strong>
+                            Dinero sobrante (Físico Contado - Fondo Fijo) que se retirará hacia la caja de seguridad: <strong id="dr-take-home-cash" style="font-size: 1.1rem; color: var(--text-color);">$0.00</strong>
                         </p>
                         <div class="form-group" id="dr-partner-withdrawal-group">
-                            <label for="dr-withdrawal-partner">¿Quién se lleva este dinero? (Seleccionar Socio)</label>
-                            <select id="dr-withdrawal-partner">
-                                <option value="">Nadie / Queda en el negocio</option>
+                            <label for="dr-withdrawal-partner">Responsable del envío a caja de seguridad (Socio/Empleado)</label>
+                            <select id="dr-withdrawal-partner" required>
+                                <option value="">Seleccionar responsable...</option>
                                 <!-- Cargado dinámicamente -->
                             </select>
-                            <small class="text-muted" style="display: block; margin-top: 0.25rem;">Si seleccionas un socio, se creará un egreso en el Balance Global automáticamente.</small>
+                            <small class="text-muted" style="display: block; margin-top: 0.25rem;">Este monto se registrará como un envío a la caja de seguridad y figurará en el PDF.</small>
                         </div>
                     </div>
 

@@ -575,6 +575,7 @@ async function loadData() {
 function updateMetrics() {
     let income = 0;
     let expense = 0;
+    let safeBoxTotal = 0;
     let paidInstallmentsThisMonth = 0;
 
     state.transactions.forEach(t => {
@@ -583,6 +584,9 @@ function updateMetrics() {
             income += amt;
         } else {
             expense += amt;
+            if (t.category === 'Caja de Seguridad') {
+                safeBoxTotal += amt;
+            }
             // Identify if this expense is an installment payment (deuda or tarjeta)
             if (t.category === 'Pago de Deuda' || (t.category === 'Otros' && t.description && t.description.startsWith('Cuota ') && t.description.includes('Tarjeta'))) {
                 paidInstallmentsThisMonth += amt;
@@ -630,6 +634,11 @@ function updateMetrics() {
     const projBalanceEl = document.getElementById('metric-projected-balance');
     if (projBalanceEl) {
         projBalanceEl.textContent = `$${projectedBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    const safeBoxEl = document.getElementById('metric-safe-box');
+    if (safeBoxEl) {
+        safeBoxEl.textContent = `$${safeBoxTotal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
 }
 
@@ -2584,7 +2593,16 @@ function downloadDailyPDFReport(diffArg) {
         if (takeHome > 0) {
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(217, 119, 6);
-            doc.text(`Dinero Retirado (Efectivo): $${takeHome.toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, finalY + 45);
+            doc.text(`Envío a Caja de Seguridad: $${takeHome.toLocaleString('es-AR', {minimumFractionDigits:2})}`, 14, finalY + 45);
+            
+            const partnerSelect = document.getElementById('dr-withdrawal-partner');
+            if (partnerSelect && partnerSelect.selectedIndex > 0) {
+                const partnerName = partnerSelect.options[partnerSelect.selectedIndex].text;
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(107, 114, 128);
+                doc.text(`Responsable del envío: ${partnerName}`, 14, finalY + 51);
+            }
         }
     }
     

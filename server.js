@@ -91,24 +91,30 @@ async function initDatabase() {
     console.log('Intentando conectar a base de datos MySQL...');
     try {
       const mysql = require('mysql2');
-      const connection = mysql.createConnection({
+      const pool = mysql.createPool({
         host: host,
         user: user,
         password: process.env.DB_PASSWORD,
         database: database,
         port: process.env.DB_PORT || 3306,
-        multipleStatements: true
+        multipleStatements: true,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0
       });
 
       await new Promise((resolve, reject) => {
-        connection.connect((err) => {
+        pool.getConnection((err, conn) => {
           if (err) reject(err);
-          else resolve();
+          else {
+            conn.release();
+            resolve();
+          }
         });
       });
 
       db.isMySQL = true;
-      db.connection = connection;
+      db.connection = pool;
       console.log('Conectado a MySQL con éxito.');
     } catch (err) {
       console.error('Error al conectar a MySQL:', err.message);
@@ -1182,11 +1188,11 @@ app.post('/api/daily-registers/close', authenticateToken, async (req, res) => {
       await db.query('UPDATE daily_transactions SET global_transaction_id = ? WHERE id = ?', [insertGlobal.insertId, tx.id]);
     }
     
-    // 2. REGISTRAR RETIRO DE SOCIO SI APLICA
-    if (withdrawal_partner_id && parseFloat(withdrawal_amount) > 0) {
+    // 2. REGISTRAR ENVÍO A CAJA DE SEGURIDAD
+    if (parseFloat(withdrawal_amount) > 0) {
         await db.query(
             'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [req.user.id, 'expense', parseFloat(withdrawal_amount), 'Sueldos y Retiros', `Retiro de utilidades desde Caja Diaria`, date, withdrawal_partner_id]
+            [req.user.id, 'expense', parseFloat(withdrawal_amount), 'Caja de Seguridad', `Envío a caja de seguridad`, date, withdrawal_partner_id || null]
         );
     }
     
