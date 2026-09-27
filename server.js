@@ -1061,6 +1061,9 @@ app.get('/api/settlements', authenticateToken, async (req, res) => {
       if (t.type === 'income') {
         totalIncome += amt;
       } else {
+        if (t.category === 'Caja de Seguridad') {
+          return; // No es un gasto real, es un movimiento de fondos
+        }
         const emp = employees.find(e => e.id === t.employee_id);
         const isPartnerWithdrawal = emp && emp.is_partner;
         if (!isPartnerWithdrawal) {
@@ -1075,7 +1078,7 @@ app.get('/api/settlements', authenticateToken, async (req, res) => {
     const settlements = employees.map(emp => {
       let advances = 0;
       monthTransactions.forEach(t => {
-        if (t.type === 'expense' && t.employee_id === emp.id) {
+        if (t.type === 'expense' && t.employee_id === emp.id && t.category !== 'Caja de Seguridad') {
           advances += parseFloat(t.amount);
         }
       });
@@ -1242,7 +1245,7 @@ app.post('/api/daily-transactions', authenticateToken, upload.single('photo'), a
     if (type === 'expense' && employee_id) {
       const globalTx = await db.query(
         'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [req.user.id, type, numericAmount, 'Sueldos', description || 'Adelanto de sueldo desde Caja', date, employee_id]
+        [req.user.id, type, numericAmount, 'Sueldos y Retiros', description || 'Adelanto de sueldo desde Caja', date, employee_id]
       );
       globalTxId = globalTx.insertId;
     }
