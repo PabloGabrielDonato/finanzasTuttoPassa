@@ -2380,12 +2380,12 @@ function openDrCloseModal() {
             net += amt;
             if (t.payment_method === 'Efectivo') cashIn += amt;
             if (t.payment_method === 'Mercado Pago') mpIn += amt;
-            if (t.payment_method === 'Payway') pwIn += amt;
+            if (t.payment_method === 'Payway' || t.payment_method === 'Payway Tarjeta') pwIn += amt;
         } else {
             net -= amt;
             if (t.payment_method === 'Efectivo') cashOut += amt;
             if (t.payment_method === 'Mercado Pago') mpOut += amt;
-            if (t.payment_method === 'Payway') pwOut += amt;
+            if (t.payment_method === 'Payway' || t.payment_method === 'Payway Tarjeta') pwOut += amt;
         }
     });
     
@@ -2519,12 +2519,12 @@ function downloadDailyPDFReport(diffArg) {
             totalIncome += amt;
             if (t.payment_method === 'Efectivo') cashIn += amt;
             if (t.payment_method === 'Mercado Pago') mpIn += amt;
-            if (t.payment_method === 'Payway') pwIn += amt;
+            if (t.payment_method === 'Payway' || t.payment_method === 'Payway Tarjeta') pwIn += amt;
         } else {
             totalExpense += amt;
             if (t.payment_method === 'Efectivo') cashOut += amt;
             if (t.payment_method === 'Mercado Pago') mpOut += amt;
-            if (t.payment_method === 'Payway') pwOut += amt;
+            if (t.payment_method === 'Payway' || t.payment_method === 'Payway Tarjeta') pwOut += amt;
         }
         
         return [
@@ -3071,7 +3071,7 @@ function renderIncomeMethods() {
         const amt = parseFloat(t.amount);
         if (t.payment_method === 'Mercado Pago') mpTotal += amt;
         else if (t.payment_method === 'Efectivo') cashTotal += amt;
-        else if (t.payment_method === 'Payway') paywayTotal += amt;
+        else if (t.payment_method === 'Payway' || t.payment_method === 'Payway Tarjeta') paywayTotal += amt;
     });
 
     const filteredData = filterVal === 'all' ? data : data.filter(t => t.payment_method === filterVal);

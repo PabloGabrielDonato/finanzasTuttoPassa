@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS daily_transactions (
     date DATE NOT NULL,
     type ENUM('income', 'expense') NOT NULL,
     amount DECIMAL(12, 2) NOT NULL,
-    payment_method ENUM('Efectivo', 'Mercado Pago', 'Payway') NOT NULL,
+    payment_method ENUM('Efectivo', 'Mercado Pago', 'Payway', 'Payway Tarjeta') NOT NULL,
     description TEXT,
     employee_id INT NULL,
     global_transaction_id INT NULL,

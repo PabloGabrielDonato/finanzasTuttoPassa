@@ -12,7 +12,7 @@ async function migrate() {
 
   try {
     console.log("Adding column...");
-    await connection.query("ALTER TABLE transactions ADD COLUMN payment_method ENUM('Efectivo', 'Mercado Pago', 'Payway') NULL DEFAULT NULL");
+    await connection.query("ALTER TABLE transactions ADD COLUMN payment_method ENUM('Efectivo', 'Mercado Pago', 'Payway', 'Payway Tarjeta') NULL DEFAULT NULL");
   } catch (err) {
     if (err.code !== 'ER_DUP_FIELDNAME') throw err;
   }
