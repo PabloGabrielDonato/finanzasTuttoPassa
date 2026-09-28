@@ -112,6 +112,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16.2A2 2 0 0 0 21.73 15L23 11a2 2 0 0 0-1.73-2.6h-5L14 3a2 2 0 0 0-3.46 0L8.27 8.4H3.27A2 2 0 0 0 1.54 11l1.27 4a2 2 0 0 0 1.73 1.2h15z"></path></svg>
                     Inventario y Prod.
                 </button>
+                <button class="nav-item" data-view="income-methods">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2" ry="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+                    Ingresos por Medio
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -1147,6 +1151,56 @@
                 </div>
             </section>
 
+            <!-- CONTENIDO DE LA VISTA: INGRESOS POR MEDIO -->
+            <section id="view-income-methods" class="content-view hide">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <h3>Detalle de Ingresos por Medio de Pago</h3>
+                    <select id="income-method-filter" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
+                        <option value="all">Todos los métodos</option>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Mercado Pago">Mercado Pago</option>
+                        <option value="Payway">Payway</option>
+                    </select>
+                </div>
+
+                <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1.5rem;">
+                    <div class="metric-card" style="border-color: #3b82f6;">
+                        <div class="metric-info">
+                            <span style="color: #3b82f6;">Mercado Pago</span>
+                            <h3 id="metric-mp">$0.00</h3>
+                        </div>
+                    </div>
+                    <div class="metric-card" style="border-color: #10b981;">
+                        <div class="metric-info">
+                            <span style="color: #10b981;">Efectivo</span>
+                            <h3 id="metric-cash">$0.00</h3>
+                        </div>
+                    </div>
+                    <div class="metric-card" style="border-color: #8b5cf6;">
+                        <div class="metric-info">
+                            <span style="color: #8b5cf6;">Payway</span>
+                            <h3 id="metric-payway">$0.00</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Método</th>
+                                <th>Descripción</th>
+                                <th style="text-align: right;">Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody id="income-methods-tbody">
+                            <!-- Filas dinámicas -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -1175,6 +1229,15 @@
                     <select id="tx-category" required>
                         <option value="" disabled selected>Selecciona categoría</option>
                         <!-- Opciones dinámicas según tipo -->
+                    </select>
+                </div>
+
+                <div class="form-group" id="tx-payment-method-group">
+                    <label for="tx-payment-method">Método de Pago</label>
+                    <select id="tx-payment-method" required>
+                        <option value="Efectivo" selected>Efectivo</option>
+                        <option value="Mercado Pago">Mercado Pago</option>
+                        <option value="Payway">Payway</option>
                     </select>
                 </div>
 

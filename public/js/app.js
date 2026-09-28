@@ -415,7 +415,8 @@ function switchView(viewName) {
         'credit-cards': 'Control de Cuotas de Tarjeta',
         'daily-register': 'Caja Diaria',
         orders: 'Gestión de Pedidos a Proveedores',
-        inventory: 'Control de Inventario y Producción'
+        inventory: 'Control de Inventario y Producción',
+        'income-methods': 'Ingresos por Medio de Pago'
     };
     document.getElementById('view-title').textContent = titles[viewName] || 'Tutto Passa';
 
@@ -440,6 +441,8 @@ function switchView(viewName) {
         renderOrdersTable();
     } else if (viewName === 'inventory') {
         loadInventoryData();
+    } else if (viewName === 'income-methods') {
+        loadIncomeMethodsData();
     }
 }
 
@@ -565,6 +568,8 @@ async function loadData() {
             renderServicePaymentsTable();
         } else if (state.currentView === 'debts') {
             renderDebtsTable();
+        } else if (state.currentView === 'income-methods') {
+            loadIncomeMethodsData();
         }
     } catch (err) {
         console.error('Error al cargar datos:', err);
@@ -729,6 +734,8 @@ function openModal(type) {
     // Limpiar otros campos
     document.getElementById('tx-amount').value = '';
     document.getElementById('tx-description').value = '';
+    const paymentMethodEl = document.getElementById('tx-payment-method');
+    if (paymentMethodEl) paymentMethodEl.value = 'Efectivo';
 
     modal.classList.remove('hide');
 }
@@ -746,6 +753,8 @@ async function handleSaveTransaction(e) {
     const category = document.getElementById('tx-category').value;
     const description = document.getElementById('tx-description').value;
     const employee_id = document.getElementById('tx-employee').value;
+    const paymentMethodEl = document.getElementById('tx-payment-method');
+    const payment_method = paymentMethodEl ? paymentMethodEl.value : 'Efectivo';
 
     if (!amount || amount <= 0 || !date || !category) {
         Alert.warning('Por favor complete todos los datos requeridos.');
@@ -765,6 +774,7 @@ async function handleSaveTransaction(e) {
                 date, 
                 category, 
                 description,
+                payment_method,
                 employee_id: employee_id ? parseInt(employee_id) : null 
             })
         });
@@ -3026,3 +3036,82 @@ async function handleSaveBaking(e) {
         Alert.error(err.message);
     }
 }
+
+// --- INGRESOS POR MEDIO DE PAGO ---
+async function loadIncomeMethodsData() {
+    const selectedMonth = document.getElementById('global-month').value;
+    try {
+        const response = await fetch(`${API_URL}/api/income-methods?month=${selectedMonth}`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (response.ok) {
+            state.incomeMethods = await response.json();
+            renderIncomeMethods();
+        }
+    } catch (err) {
+        console.error('Error al cargar ingresos por medio de pago:', err);
+    }
+}
+
+function renderIncomeMethods() {
+    let mpTotal = 0;
+    let cashTotal = 0;
+    let paywayTotal = 0;
+    
+    const tbody = document.getElementById('income-methods-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const filterVal = document.getElementById('income-method-filter') ? document.getElementById('income-method-filter').value : 'all';
+    
+    const data = state.incomeMethods || [];
+    
+    // Calcular totales siempre con todo
+    data.forEach(t => {
+        const amt = parseFloat(t.amount);
+        if (t.payment_method === 'Mercado Pago') mpTotal += amt;
+        else if (t.payment_method === 'Efectivo') cashTotal += amt;
+        else if (t.payment_method === 'Payway') paywayTotal += amt;
+    });
+
+    const filteredData = filterVal === 'all' ? data : data.filter(t => t.payment_method === filterVal);
+    
+    filteredData.forEach(t => {
+        const amt = parseFloat(t.amount);
+        
+        const dStr = t.date.split('T')[0];
+        const [yy, mm, dd] = dStr.split('-');
+        
+        let badgeClass = 'badge-neutral';
+        if (t.payment_method === 'Mercado Pago') badgeClass = 'badge-income';
+        if (t.payment_method === 'Efectivo') badgeClass = 'badge-expense';
+        
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${dd}/${mm}/${yy}</td>
+            <td><span class="badge ${badgeClass}">${t.payment_method}</span></td>
+            <td>${t.description || '-'}</td>
+            <td style="text-align: right; font-weight: 500;">$${amt.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+    
+    if (filteredData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state" style="text-align:center; color:#6b7280;">No hay ingresos para este filtro.</td></tr>';
+    }
+    
+    const mpEl = document.getElementById('metric-mp');
+    const cashEl = document.getElementById('metric-cash');
+    const paywayEl = document.getElementById('metric-payway');
+    
+    if (mpEl) mpEl.textContent = '$' + mpTotal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    if (cashEl) cashEl.textContent = '$' + cashTotal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    if (paywayEl) paywayEl.textContent = '$' + paywayTotal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const filterEl = document.getElementById('income-method-filter');
+    if (filterEl) {
+        filterEl.addEventListener('change', () => renderIncomeMethods());
+    }
+});

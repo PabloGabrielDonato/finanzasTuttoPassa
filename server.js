@@ -239,7 +239,7 @@ app.get('/api/transactions', authenticateToken, async (req, res) => {
 
 // Crear transacción
 app.post('/api/transactions', authenticateToken, async (req, res) => {
-  const { type, amount, category, description, date, employee_id } = req.body;
+  const { type, amount, category, description, date, employee_id, payment_method } = req.body;
 
   if (!type || !amount || !category || !date) {
     return res.status(400).json({ error: 'Todos los campos excepto la descripción son obligatorios.' });
@@ -251,8 +251,8 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
 
   try {
     const result = await db.query(
-      'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [req.user.id, type, amount, category, description || '', date, employee_id || null]
+      'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, type, amount, category, description || '', date, employee_id || null, payment_method || 'Efectivo']
     );
 
     const newId = result.insertId;
@@ -267,7 +267,8 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
         category,
         description,
         date,
-        employee_id: employee_id || null
+        employee_id: employee_id || null,
+        payment_method: payment_method || 'Efectivo'
       }
     });
   } catch (err) {
@@ -1304,6 +1305,34 @@ app.delete('/api/daily-transactions/:id', authenticateToken, async (req, res) =>
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al eliminar la transacción.' });
+  }
+});
+
+// --- RUTAS DE INGRESOS POR MÉTODO DE PAGO ---
+app.get('/api/income-methods', authenticateToken, async (req, res) => {
+  const { month } = req.query; // Formato YYYY-MM
+  if (!month) {
+    return res.status(400).json({ error: 'El mes es obligatorio (formato YYYY-MM).' });
+  }
+  
+  try {
+    let queryStr = `SELECT * FROM transactions WHERE type = 'income' AND payment_method IS NOT NULL`;
+    const params = [];
+    
+    if (db.isMySQL) {
+      queryStr += ' AND DATE_FORMAT(date, "%Y-%m") = ?';
+    } else {
+      queryStr += ' AND strftime("%Y-%m", date) = ?';
+    }
+    params.push(month);
+    
+    queryStr += ' ORDER BY date DESC, id DESC';
+    
+    const transactions = await db.query(queryStr, params);
+    res.json(transactions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al consultar ingresos por método.' });
   }
 });
 
