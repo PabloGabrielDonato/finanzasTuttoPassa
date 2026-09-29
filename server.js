@@ -277,6 +277,64 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
   }
 });
 
+// Obtener saldos históricos de medios de pago
+app.get('/api/balances', authenticateToken, async (req, res) => {
+  try {
+    const balances = await db.query(`
+      SELECT payment_method, 
+             SUM(CASE 
+                   WHEN type='income' THEN amount 
+                   WHEN category='Caja de Seguridad' THEN 0 
+                   ELSE -amount 
+                 END) as balance
+      FROM transactions 
+      WHERE payment_method IS NOT NULL
+      GROUP BY payment_method
+    `);
+    res.json(balances);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener saldos' });
+  }
+});
+
+// Ajustar saldo
+app.post('/api/balances/adjust', authenticateToken, async (req, res) => {
+  const { payment_method, new_balance } = req.body;
+  if (!payment_method || new_balance === undefined) {
+    return res.status(400).json({ error: 'Faltan datos.' });
+  }
+  
+  try {
+    const current = await db.query(`
+      SELECT SUM(CASE 
+                   WHEN type='income' THEN amount 
+                   WHEN category='Caja de Seguridad' THEN 0 
+                   ELSE -amount 
+                 END) as balance
+      FROM transactions 
+      WHERE payment_method = ?
+    `, [payment_method]);
+    
+    const currentBalance = (current[0] && current[0].balance) ? parseFloat(current[0].balance) : 0;
+    const targetBalance = parseFloat(new_balance);
+    const diff = targetBalance - currentBalance;
+    
+    if (Math.abs(diff) > 0.01) {
+      const type = diff > 0 ? 'income' : 'expense';
+      await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, type, Math.abs(diff), 'Ajuste de Saldo', 'Ajuste manual de saldo', new Date().toISOString().split('T')[0], null, payment_method]
+      );
+    }
+    
+    res.json({ message: 'Saldo ajustado con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al ajustar saldo' });
+  }
+});
+
 // Eliminar transacción
 app.delete('/api/transactions/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
@@ -1173,8 +1231,8 @@ app.post('/api/daily-registers/close', authenticateToken, async (req, res) => {
       const desc = diff > 0 ? `Sobrante de Caja Arqueo (${date})` : `Faltante de Caja Arqueo (${date})`;
       
       await db.query(
-        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [req.user.id, type, absDiff, category, desc, date, null]
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, type, absDiff, category, desc, date, null, 'Efectivo']
       );
     }
     
@@ -1185,8 +1243,8 @@ app.post('/api/daily-registers/close', authenticateToken, async (req, res) => {
       const desc = `[Caja] ${tx.payment_method} - ${tx.description || 'Movimiento Diario'}`;
       
       const insertGlobal = await db.query(
-        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [req.user.id, tx.type, tx.amount, globalCategory, desc, tx.date, null]
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, tx.type, tx.amount, globalCategory, desc, tx.date, null, tx.payment_method]
       );
       
       await db.query('UPDATE daily_transactions SET global_transaction_id = ? WHERE id = ?', [insertGlobal.insertId, tx.id]);
@@ -1195,8 +1253,8 @@ app.post('/api/daily-registers/close', authenticateToken, async (req, res) => {
     // 2. REGISTRAR ENVÍO A CAJA DE SEGURIDAD
     if (parseFloat(withdrawal_amount) > 0) {
         await db.query(
-            'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [req.user.id, 'expense', parseFloat(withdrawal_amount), 'Caja de Seguridad', `Envío a caja de seguridad`, date, withdrawal_partner_id || null]
+            'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [req.user.id, 'expense', parseFloat(withdrawal_amount), 'Caja de Seguridad', `Envío a caja de seguridad`, date, withdrawal_partner_id || null, 'Efectivo']
         );
     }
     

@@ -539,6 +539,14 @@ async function loadData() {
                 renderOrdersTable();
             }
         }
+        
+        // 7.5 Cargar Saldos Históricos
+        const balancesResponse = await fetch(`${API_URL}/api/balances`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (balancesResponse.ok && balancesResponse.headers.get('content-type')?.includes('application/json')) {
+            state.balances = await balancesResponse.json();
+        }
 
         // 8. Cargar Transacciones
         const response = await fetch(`${API_URL}/api/transactions?month=${selectedMonth}`, {
@@ -568,8 +576,6 @@ async function loadData() {
             renderServicePaymentsTable();
         } else if (state.currentView === 'debts') {
             renderDebtsTable();
-        } else if (state.currentView === 'income-methods') {
-            loadIncomeMethodsData();
         }
     } catch (err) {
         console.error('Error al cargar datos:', err);
@@ -582,6 +588,11 @@ function updateMetrics() {
     let expense = 0;
     let safeBoxTotal = 0;
     let paidInstallmentsThisMonth = 0;
+
+    let mpTotal = 0;
+    let cashTotal = 0;
+    let pwTotal = 0;
+    let pwtTotal = 0;
 
     state.transactions.forEach(t => {
         const amt = parseFloat(t.amount);
@@ -645,7 +656,58 @@ function updateMetrics() {
     if (safeBoxEl) {
         safeBoxEl.textContent = `$${safeBoxTotal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
+
+    // Update Transaction View Payment Method Metrics (Historic All-Time)
+    let mpBalance = 0, cashBalance = 0, pwBalance = 0, pwtBalance = 0;
+    if (state.balances) {
+        state.balances.forEach(b => {
+            const amt = parseFloat(b.balance);
+            if (b.payment_method === 'Mercado Pago') mpBalance = amt;
+            else if (b.payment_method === 'Efectivo') cashBalance = amt;
+            else if (b.payment_method === 'Payway') pwBalance = amt;
+            else if (b.payment_method === 'Payway Tarjeta') pwtBalance = amt;
+        });
+    }
+
+    const txMpEl = document.getElementById('tx-metric-mp');
+    const txCashEl = document.getElementById('tx-metric-cash');
+    const txPwEl = document.getElementById('tx-metric-payway');
+    const txPwtEl = document.getElementById('tx-metric-payway-tarjeta');
+    
+    if (txMpEl) txMpEl.textContent = `$${mpBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (txCashEl) txCashEl.textContent = `$${cashBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (txPwEl) txPwEl.textContent = `$${pwBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (txPwtEl) txPwtEl.textContent = `$${pwtBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+// Ajuste manual de saldo
+async function handleAdjustBalance(method) {
+    const newBalance = prompt(`Introduce el saldo real actual para ${method}:`);
+    if (newBalance === null || newBalance.trim() === '') return;
+    
+    const parsed = parseFloat(newBalance.replace(',', '.'));
+    if (isNaN(parsed)) {
+        Alert.error('El valor ingresado no es válido.');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/api/balances/adjust`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: JSON.stringify({ payment_method: method, new_balance: parsed })
+        });
+        await safeResponseJSON(response, 'Error al ajustar saldo');
+        Alert.success('Saldo ajustado con éxito.');
+        loadData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+window.handleAdjustBalance = handleAdjustBalance;
 
 // Renderizar tabla de transacciones
 function renderTransactionsTable(filteredList = null) {
@@ -674,6 +736,7 @@ function renderTransactionsTable(filteredList = null) {
             <td><strong>${t.user_name}</strong></td>
             <td><span class="badge badge-${t.type}">${t.type === 'income' ? 'Ingreso' : 'Egreso'}</span></td>
             <td>${t.category}</td>
+            <td><span class="badge badge-neutral">${t.payment_method || '-'}</span></td>
             <td>${descriptionHTML}</td>
             <td class="cell-amount ${t.type}">${t.type === 'income' ? '+' : '-'}${formattedAmount}</td>
             <td>
@@ -3037,81 +3100,4 @@ async function handleSaveBaking(e) {
     }
 }
 
-// --- INGRESOS POR MEDIO DE PAGO ---
-async function loadIncomeMethodsData() {
-    const selectedMonth = document.getElementById('global-month').value;
-    try {
-        const response = await fetch(`${API_URL}/api/income-methods?month=${selectedMonth}`, {
-            headers: { 'Authorization': `Bearer ${state.token}` }
-        });
-        if (response.ok) {
-            state.incomeMethods = await response.json();
-            renderIncomeMethods();
-        }
-    } catch (err) {
-        console.error('Error al cargar ingresos por medio de pago:', err);
-    }
-}
 
-function renderIncomeMethods() {
-    let mpTotal = 0;
-    let cashTotal = 0;
-    let paywayTotal = 0;
-    
-    const tbody = document.getElementById('income-methods-tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    const filterVal = document.getElementById('income-method-filter') ? document.getElementById('income-method-filter').value : 'all';
-    
-    const data = state.incomeMethods || [];
-    
-    // Calcular totales siempre con todo
-    data.forEach(t => {
-        const amt = parseFloat(t.amount);
-        if (t.payment_method === 'Mercado Pago') mpTotal += amt;
-        else if (t.payment_method === 'Efectivo') cashTotal += amt;
-        else if (t.payment_method === 'Payway' || t.payment_method === 'Payway Tarjeta') paywayTotal += amt;
-    });
-
-    const filteredData = filterVal === 'all' ? data : data.filter(t => t.payment_method === filterVal);
-    
-    filteredData.forEach(t => {
-        const amt = parseFloat(t.amount);
-        
-        const dStr = t.date.split('T')[0];
-        const [yy, mm, dd] = dStr.split('-');
-        
-        let badgeClass = 'badge-neutral';
-        if (t.payment_method === 'Mercado Pago') badgeClass = 'badge-income';
-        if (t.payment_method === 'Efectivo') badgeClass = 'badge-expense';
-        
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${dd}/${mm}/${yy}</td>
-            <td><span class="badge ${badgeClass}">${t.payment_method}</span></td>
-            <td>${t.description || '-'}</td>
-            <td style="text-align: right; font-weight: 500;">$${amt.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-    
-    if (filteredData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="empty-state" style="text-align:center; color:#6b7280;">No hay ingresos para este filtro.</td></tr>';
-    }
-    
-    const mpEl = document.getElementById('metric-mp');
-    const cashEl = document.getElementById('metric-cash');
-    const paywayEl = document.getElementById('metric-payway');
-    
-    if (mpEl) mpEl.textContent = '$' + mpTotal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
-    if (cashEl) cashEl.textContent = '$' + cashTotal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
-    if (paywayEl) paywayEl.textContent = '$' + paywayTotal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    const filterEl = document.getElementById('income-method-filter');
-    if (filterEl) {
-        filterEl.addEventListener('change', () => renderIncomeMethods());
-    }
-});
