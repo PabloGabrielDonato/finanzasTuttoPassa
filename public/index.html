@@ -190,12 +190,15 @@
                         </div>
                         <div class="metric-icon" style="color: #eba12a;">🔮</div>
                     </div>
-                    <div class="metric-card" style="background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.02)); border-color: rgba(16,185,129,0.3);">
+                    <div class="metric-card" style="background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.02)); border-color: rgba(16,185,129,0.3); display: flex; align-items: center; justify-content: space-between;">
                         <div class="metric-info">
                             <span style="color: #059669;">Caja de Seguridad</span>
                             <h3 id="metric-safe-box" style="color: #059669;">$0.00</h3>
                         </div>
-                        <div class="metric-icon" style="color: #059669;">🛡️</div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                            <div class="metric-icon" style="color: #059669;">🛡️</div>
+                            <button onclick="handleAdjustSafeBox()" class="btn-icon" style="color: var(--text-muted); font-size: 1rem;" title="Ajustar saldo">✎</button>
+                        </div>
                     </div>
                 </div>
 
@@ -351,7 +354,7 @@
                                         <option value="Efectivo">Efectivo</option>
                                         <option value="Mercado Pago">Mercado Pago</option>
                                         <option value="Payway">Payway</option>
-                                        <option value="Payway Tarjeta">Payway Tarjeta</option>
+                                        <option value="Cupones">Cupones</option>
                                     </select>
                                 </div>
                                 <div class="form-group hide" id="dr-employee-group">
@@ -410,7 +413,7 @@
             <!-- CONTENIDO DE LA VISTA: TRANSACCIONES -->
             <section id="view-transactions" class="content-view hide">
                 <!-- Tarjetas de Métricas de Medios de Pago -->
-                <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1.5rem;">
+                <div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 1.5rem;">
                     <div class="metric-card" style="border-color: #3b82f6; display: flex; align-items: center; justify-content: space-between;">
                         <div class="metric-info">
                             <span style="color: #3b82f6;">Mercado Pago</span>
@@ -434,10 +437,17 @@
                     </div>
                     <div class="metric-card" style="border-color: #f59e0b; display: flex; align-items: center; justify-content: space-between;">
                         <div class="metric-info">
-                            <span style="color: #f59e0b;">Payway Tarjeta</span>
+                            <span style="color: #f59e0b;">Cupones</span>
                             <h3 id="tx-metric-payway-tarjeta">$0.00</h3>
                         </div>
-                        <button onclick="handleAdjustBalance('Payway Tarjeta')" class="btn-icon" style="color: var(--text-muted);" title="Ajustar saldo">✎</button>
+                        <button onclick="handleAdjustBalance('Cupones')" class="btn-icon" style="color: var(--text-muted);" title="Ajustar saldo">✎</button>
+                    </div>
+                    <div class="metric-card" style="border-color: #059669; background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.02)); display: flex; align-items: center; justify-content: space-between;">
+                        <div class="metric-info">
+                            <span style="color: #059669;">🛡️ Caja de Seguridad</span>
+                            <h3 id="tx-metric-safe-box" style="color: #059669;">$0.00</h3>
+                        </div>
+                        <button onclick="handleAdjustSafeBox()" class="btn-icon" style="color: var(--text-muted);" title="Ajustar saldo">✎</button>
                     </div>
                 </div>
                 <div class="card-panel">
@@ -1220,7 +1230,7 @@
                         <option value="Efectivo" selected>Efectivo</option>
                         <option value="Mercado Pago">Mercado Pago</option>
                         <option value="Payway">Payway</option>
-                        <option value="Payway Tarjeta">Payway Tarjeta</option>
+                        <option value="Cupones">Cupones</option>
                     </select>
                 </div>
 

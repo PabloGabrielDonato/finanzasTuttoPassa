@@ -282,16 +282,25 @@ app.get('/api/balances', authenticateToken, async (req, res) => {
   try {
     const balances = await db.query(`
       SELECT payment_method, 
-             SUM(CASE 
-                   WHEN type='income' THEN amount 
-                   WHEN category='Caja de Seguridad' THEN 0 
-                   ELSE -amount 
-                 END) as balance
+             SUM(CASE WHEN type='income' THEN amount ELSE -amount END) as balance
       FROM transactions 
       WHERE payment_method IS NOT NULL
       GROUP BY payment_method
     `);
-    res.json(balances);
+    
+    // Calcular también el histórico de Caja de Seguridad
+    const safeBoxRows = await db.query(`
+      SELECT SUM(amount) as total
+      FROM transactions
+      WHERE type='expense' AND category='Caja de Seguridad'
+    `);
+    
+    const safeBoxBalance = (safeBoxRows[0] && safeBoxRows[0].total) ? parseFloat(safeBoxRows[0].total) : 0;
+    
+    res.json({
+        payment_methods: balances,
+        safe_box: safeBoxBalance
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al obtener saldos' });
@@ -307,11 +316,7 @@ app.post('/api/balances/adjust', authenticateToken, async (req, res) => {
   
   try {
     const current = await db.query(`
-      SELECT SUM(CASE 
-                   WHEN type='income' THEN amount 
-                   WHEN category='Caja de Seguridad' THEN 0 
-                   ELSE -amount 
-                 END) as balance
+      SELECT SUM(CASE WHEN type='income' THEN amount ELSE -amount END) as balance
       FROM transactions 
       WHERE payment_method = ?
     `, [payment_method]);
@@ -332,6 +337,48 @@ app.post('/api/balances/adjust', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al ajustar saldo' });
+  }
+});
+
+// Ajustar saldo de Caja de Seguridad
+app.post('/api/balances/adjust-safe-box', authenticateToken, async (req, res) => {
+  const { new_balance } = req.body;
+  if (new_balance === undefined) {
+    return res.status(400).json({ error: 'Faltan datos.' });
+  }
+  
+  try {
+    // Calcular el total actual de Caja de Seguridad (sum of expenses with category 'Caja de Seguridad')
+    const current = await db.query(`
+      SELECT SUM(amount) as total
+      FROM transactions
+      WHERE type='expense' AND category='Caja de Seguridad'
+    `);
+    
+    const currentTotal = (current[0] && current[0].total) ? parseFloat(current[0].total) : 0;
+    const targetBalance = parseFloat(new_balance);
+    const diff = targetBalance - currentTotal;
+    
+    if (Math.abs(diff) > 0.01) {
+      if (diff > 0) {
+        // Need to add more to safe box
+        await db.query(
+          'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [req.user.id, 'expense', Math.abs(diff), 'Caja de Seguridad', 'Ajuste manual de Caja de Seguridad', new Date().toISOString().split('T')[0], null, 'Efectivo']
+        );
+      } else {
+        // Need to reduce safe box - remove an expense (add negative adjustment)
+        await db.query(
+          'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [req.user.id, 'income', Math.abs(diff), 'Ajuste de Saldo', 'Ajuste manual de Caja de Seguridad (reducción)', new Date().toISOString().split('T')[0], null, 'Efectivo']
+        );
+      }
+    }
+    
+    res.json({ message: 'Caja de Seguridad ajustada con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al ajustar Caja de Seguridad' });
   }
 });
 

@@ -654,18 +654,24 @@ function updateMetrics() {
 
     const safeBoxEl = document.getElementById('metric-safe-box');
     if (safeBoxEl) {
-        safeBoxEl.textContent = `$${safeBoxTotal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        let safeBoxHist = 0;
+        if (state.balances && state.balances.safe_box !== undefined) {
+            safeBoxHist = state.balances.safe_box;
+        } else {
+            safeBoxHist = safeBoxTotal; // Fallback to current month if not loaded
+        }
+        safeBoxEl.textContent = `$${safeBoxHist.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
 
     // Update Transaction View Payment Method Metrics (Historic All-Time)
     let mpBalance = 0, cashBalance = 0, pwBalance = 0, pwtBalance = 0;
-    if (state.balances) {
-        state.balances.forEach(b => {
+    if (state.balances && state.balances.payment_methods) {
+        state.balances.payment_methods.forEach(b => {
             const amt = parseFloat(b.balance);
             if (b.payment_method === 'Mercado Pago') mpBalance = amt;
             else if (b.payment_method === 'Efectivo') cashBalance = amt;
             else if (b.payment_method === 'Payway') pwBalance = amt;
-            else if (b.payment_method === 'Payway Tarjeta') pwtBalance = amt;
+            else if (b.payment_method === 'Cupones') pwtBalance = amt;
         });
     }
 
@@ -678,6 +684,16 @@ function updateMetrics() {
     if (txCashEl) txCashEl.textContent = `$${cashBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     if (txPwEl) txPwEl.textContent = `$${pwBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     if (txPwtEl) txPwtEl.textContent = `$${pwtBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    // Caja de Seguridad en Transacciones
+    const txSafeBoxEl = document.getElementById('tx-metric-safe-box');
+    if (txSafeBoxEl) {
+        let sbVal = 0;
+        if (state.balances && state.balances.safe_box !== undefined) {
+            sbVal = state.balances.safe_box;
+        }
+        txSafeBoxEl.textContent = `$${sbVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
 }
 
 // Ajuste manual de saldo
@@ -708,6 +724,35 @@ async function handleAdjustBalance(method) {
     }
 }
 window.handleAdjustBalance = handleAdjustBalance;
+
+// Ajuste manual de Caja de Seguridad
+async function handleAdjustSafeBox() {
+    const newBalance = prompt('Introduce el saldo real actual de la Caja de Seguridad:');
+    if (newBalance === null || newBalance.trim() === '') return;
+    
+    const parsed = parseFloat(newBalance.replace(',', '.'));
+    if (isNaN(parsed)) {
+        Alert.error('El valor ingresado no es válido.');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/api/balances/adjust-safe-box`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: JSON.stringify({ new_balance: parsed })
+        });
+        await safeResponseJSON(response, 'Error al ajustar Caja de Seguridad');
+        Alert.success('Caja de Seguridad ajustada con éxito.');
+        loadData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+window.handleAdjustSafeBox = handleAdjustSafeBox;
 
 // Renderizar tabla de transacciones
 function renderTransactionsTable(filteredList = null) {
@@ -2443,12 +2488,12 @@ function openDrCloseModal() {
             net += amt;
             if (t.payment_method === 'Efectivo') cashIn += amt;
             if (t.payment_method === 'Mercado Pago') mpIn += amt;
-            if (t.payment_method === 'Payway' || t.payment_method === 'Payway Tarjeta') pwIn += amt;
+            if (t.payment_method === 'Payway' || t.payment_method === 'Cupones') pwIn += amt;
         } else {
             net -= amt;
             if (t.payment_method === 'Efectivo') cashOut += amt;
             if (t.payment_method === 'Mercado Pago') mpOut += amt;
-            if (t.payment_method === 'Payway' || t.payment_method === 'Payway Tarjeta') pwOut += amt;
+            if (t.payment_method === 'Payway' || t.payment_method === 'Cupones') pwOut += amt;
         }
     });
     
@@ -2582,12 +2627,12 @@ function downloadDailyPDFReport(diffArg) {
             totalIncome += amt;
             if (t.payment_method === 'Efectivo') cashIn += amt;
             if (t.payment_method === 'Mercado Pago') mpIn += amt;
-            if (t.payment_method === 'Payway' || t.payment_method === 'Payway Tarjeta') pwIn += amt;
+            if (t.payment_method === 'Payway' || t.payment_method === 'Cupones') pwIn += amt;
         } else {
             totalExpense += amt;
             if (t.payment_method === 'Efectivo') cashOut += amt;
             if (t.payment_method === 'Mercado Pago') mpOut += amt;
-            if (t.payment_method === 'Payway' || t.payment_method === 'Payway Tarjeta') pwOut += amt;
+            if (t.payment_method === 'Payway' || t.payment_method === 'Cupones') pwOut += amt;
         }
         
         return [
