@@ -1262,19 +1262,30 @@ app.post('/api/daily-registers/close', authenticateToken, async (req, res) => {
   
   try {
     const existing = await db.query('SELECT * FROM daily_registers WHERE date = ?', [date]);
-    if (existing.length === 0 || existing[0].status === 'closed') {
-      return res.status(400).json({ error: 'La caja no está abierta para esta fecha.' });
+    if (existing.length === 0) {
+      await db.query(
+        'INSERT INTO daily_registers (user_id, date, initial_cash, final_cash_counted, next_day_cash, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [req.user.id, date, 0, parseFloat(final_cash_counted), next_day_cash !== undefined ? parseFloat(next_day_cash) : null, 'closed']
+      );
+    } else {
+      await db.query(
+        'UPDATE daily_registers SET final_cash_counted = ?, next_day_cash = ?, status = ? WHERE date = ?', 
+        [parseFloat(final_cash_counted), next_day_cash !== undefined ? parseFloat(next_day_cash) : null, 'closed', date]
+      );
     }
     
-    await db.query('UPDATE daily_registers SET final_cash_counted = ?, next_day_cash = ?, status = ? WHERE date = ?', 
-      [parseFloat(final_cash_counted), next_day_cash !== undefined ? parseFloat(next_day_cash) : null, 'closed', date]);
-    
-    // Registrar el sobrante o faltante en transacciones generales si hay diferencia
+    // 1. Limpiar cualquier registro previo de sobrante o faltante de esta fecha (para permitir re-cierres)
+    await db.query(
+      "DELETE FROM transactions WHERE date = ? AND (description LIKE 'Sobrante de Caja Arqueo%' OR description LIKE 'Faltante de Caja Arqueo%')",
+      [date]
+    );
+
+    // Registrar el sobrante o faltante nuevo si hay diferencia
     if (difference && Math.abs(parseFloat(difference)) > 0) {
       const diff = parseFloat(difference);
       const type = diff > 0 ? 'income' : 'expense';
       const absDiff = Math.abs(diff);
-      const category = 'Otros'; // O una específica
+      const category = 'Otros';
       const desc = diff > 0 ? `Sobrante de Caja Arqueo (${date})` : `Faltante de Caja Arqueo (${date})`;
       
       await db.query(
@@ -1283,26 +1294,32 @@ app.post('/api/daily-registers/close', authenticateToken, async (req, res) => {
       );
     }
     
-    // 1. SINCRONIZAR MOVIMIENTOS DIARIOS (LOS QUE AÚN NO SE SINCRONIZARON, EJ. NO SON ADELANTOS)
+    // 2. SINCRONIZAR MOVIMIENTOS DIARIOS (LOS QUE AÚN NO SE SINCRONIZARON)
     const unsyncedTxs = await db.query('SELECT * FROM daily_transactions WHERE date = ? AND global_transaction_id IS NULL', [date]);
     for (const tx of unsyncedTxs) {
-      const globalCategory = tx.type === 'income' ? 'Ventas' : 'Otros'; // Ventas por defecto, u Otros para egresos. "Venta Mostrador" no está garantizado en la BD.
+      const globalCategory = tx.employee_id ? 'Sueldos y Retiros' : (tx.type === 'income' ? 'Ventas' : 'Otros');
       const desc = `[Caja] ${tx.payment_method} - ${tx.description || 'Movimiento Diario'}`;
       
       const insertGlobal = await db.query(
         'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [req.user.id, tx.type, tx.amount, globalCategory, desc, tx.date, null, tx.payment_method]
+        [req.user.id, tx.type, tx.amount, globalCategory, desc, tx.date, tx.employee_id || null, tx.payment_method]
       );
       
       await db.query('UPDATE daily_transactions SET global_transaction_id = ? WHERE id = ?', [insertGlobal.insertId, tx.id]);
     }
     
-    // 2. REGISTRAR ENVÍO A CAJA DE SEGURIDAD
+    // 3. REGISTRAR / ACTUALIZAR ENVÍO A CAJA DE SEGURIDAD
+    // Limpiar envío previo a caja de seguridad de esta fecha si existiera
+    await db.query(
+      "DELETE FROM transactions WHERE date = ? AND category = 'Caja de Seguridad' AND description LIKE 'Envío a caja de seguridad%'",
+      [date]
+    );
+
     if (parseFloat(withdrawal_amount) > 0) {
-        await db.query(
-            'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [req.user.id, 'expense', parseFloat(withdrawal_amount), 'Caja de Seguridad', `Envío a caja de seguridad`, date, withdrawal_partner_id || null, 'Efectivo']
-        );
+      await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, 'expense', parseFloat(withdrawal_amount), 'Caja de Seguridad', `Envío a caja de seguridad`, date, withdrawal_partner_id || null, 'Efectivo']
+      );
     }
     
     res.json({ message: 'Caja cerrada, balance sincronizado y arqueada con éxito.' });
@@ -1340,8 +1357,11 @@ app.post('/api/daily-transactions', authenticateToken, upload.single('photo'), a
 
   try {
     const register = await db.query('SELECT status FROM daily_registers WHERE date = ?', [date]);
-    if (register.length === 0 || register[0].status === 'closed') {
-      return res.status(400).json({ error: 'La caja no está abierta para esta fecha. No puedes agregar movimientos.' });
+    if (register.length === 0) {
+      await db.query(
+        'INSERT INTO daily_registers (user_id, date, initial_cash, status) VALUES (?, ?, ?, ?)',
+        [req.user.id, date, 0, 'open']
+      );
     }
 
     const photoPath = req.file ? '/uploads/' + req.file.filename : null;
@@ -1350,8 +1370,17 @@ app.post('/api/daily-transactions', authenticateToken, upload.single('photo'), a
     // Si es un adelanto de sueldo (tiene employee_id y es egreso), registrarlo en la tabla general
     if (type === 'expense' && employee_id) {
       const globalTx = await db.query(
-        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [req.user.id, type, numericAmount, 'Sueldos y Retiros', description || 'Adelanto de sueldo desde Caja', date, employee_id]
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, type, numericAmount, 'Sueldos y Retiros', description || 'Adelanto de sueldo desde Caja', date, employee_id, payment_method]
+      );
+      globalTxId = globalTx.insertId;
+    } else if (register.length > 0 && register[0].status === 'closed') {
+      // Si la caja ya estaba cerrada, sincronizar de inmediato el movimiento nuevo
+      const globalCategory = type === 'income' ? 'Ventas' : 'Otros';
+      const desc = `[Caja] ${payment_method} - ${description || 'Movimiento Diario'}`;
+      const globalTx = await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, type, numericAmount, globalCategory, desc, date, null, payment_method]
       );
       globalTxId = globalTx.insertId;
     }
@@ -1388,10 +1417,7 @@ app.delete('/api/daily-transactions/:id', authenticateToken, async (req, res) =>
       return res.status(404).json({ error: 'Transacción no encontrada.' });
     }
     
-    const register = await db.query('SELECT status FROM daily_registers WHERE date = ?', [tx[0].date]);
-    if (register.length > 0 && register[0].status === 'closed') {
-      return res.status(400).json({ error: 'La caja ya fue cerrada para esta fecha. No puedes eliminar movimientos.' });
-    }
+    // Permitir eliminar incluso en cajas cerradas
     
     if (tx[0].photo_path) {
       const fullPhotoPath = path.join(__dirname, 'public', tx[0].photo_path);
@@ -1410,6 +1436,52 @@ app.delete('/api/daily-transactions/:id', authenticateToken, async (req, res) =>
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al eliminar la transacción.' });
+  }
+});
+
+// Editar transacción diaria
+app.put('/api/daily-transactions/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { type, amount, payment_method, description } = req.body;
+  
+  if (!type || !amount || !payment_method) {
+    return res.status(400).json({ error: 'Tipo, monto y método son obligatorios.' });
+  }
+  
+  const numericAmount = parseFloat(amount);
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    return res.status(400).json({ error: 'El monto debe ser un número mayor a cero.' });
+  }
+  
+  try {
+    const tx = await db.query('SELECT * FROM daily_transactions WHERE id = ?', [id]);
+    if (tx.length === 0) {
+      return res.status(404).json({ error: 'Transacción no encontrada.' });
+    }
+    
+    // Permitir editar incluso en cajas cerradas
+    
+    await db.query(
+      'UPDATE daily_transactions SET type = ?, amount = ?, payment_method = ?, description = ? WHERE id = ?',
+      [type, numericAmount, payment_method, description || '', id]
+    );
+    
+    // Si tenía una transacción global asociada (sincronizada al cerrar caja o adelanto), actualizar también
+    if (tx[0].global_transaction_id) {
+      const globalCategory = tx[0].employee_id ? 'Sueldos y Retiros' : (type === 'income' ? 'Ventas' : 'Otros');
+      const globalDesc = tx[0].employee_id 
+        ? (description || 'Adelanto de sueldo desde Caja')
+        : `[Caja] ${payment_method} - ${description || 'Movimiento Diario'}`;
+      await db.query(
+        'UPDATE transactions SET type = ?, amount = ?, description = ?, payment_method = ?, category = ? WHERE id = ?',
+        [type, numericAmount, globalDesc, payment_method, globalCategory, tx[0].global_transaction_id]
+      );
+    }
+    
+    res.json({ message: 'Transacción diaria actualizada con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al editar la transacción diaria.' });
   }
 });
 

@@ -2305,7 +2305,9 @@ async function loadDailyTransactions() {
             if (state.dailyRegister.status === 'open') {
                 document.getElementById('dr-open-state').classList.remove('hide');
             } else {
+                // Caja cerrada: mostrar banner + tabla editable
                 document.getElementById('dr-closed-state').classList.remove('hide');
+                document.getElementById('dr-open-state').classList.remove('hide');
             }
         }
     } catch (err) {
@@ -2346,8 +2348,11 @@ function renderDailyTransactionsTable() {
         return;
     }
     
+    const isClosed = state.dailyRegister?.status === 'closed';
+    
     state.dailyTransactions.forEach(t => {
         const tr = document.createElement('tr');
+        tr.id = `dr-row-${t.id}`;
         const formattedAmount = parseFloat(t.amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
         
         let photoHtml = '<span class="text-muted">—</span>';
@@ -2361,7 +2366,10 @@ function renderDailyTransactionsTable() {
             <td>${t.description || '<span class="text-muted">—</span>'}</td>
             <td class="cell-amount ${t.type}">${t.type === 'income' ? '+' : '-'}${formattedAmount}</td>
             <td>${photoHtml}</td>
-            <td>
+            <td style="display: flex; gap: 4px; align-items: center;">
+                <button class="btn-icon" onclick="handleEditDailyTransaction(${t.id})" title="Editar" style="color: var(--primary-color); background: none; border: none; cursor: pointer; padding: 4px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
                 <button class="btn-delete" onclick="handleDeleteDailyTransaction(${t.id})" title="Eliminar movimiento">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                 </button>
@@ -2408,7 +2416,6 @@ function updateDailyMetrics() {
 
 async function handleSaveDailyTransaction(e) {
     e.preventDefault();
-    if (state.dailyRegister?.status === 'closed') return;
     
     const date = document.getElementById('dr-date-selector').value;
     const type = document.getElementById('dr-type').value;
@@ -2451,7 +2458,6 @@ async function handleSaveDailyTransaction(e) {
 }
 
 async function handleDeleteDailyTransaction(id) {
-    if (state.dailyRegister?.status === 'closed') return;
     if (!await Alert.confirm('¿Eliminar este movimiento de caja diaria?')) return;
     
     try {
@@ -2469,6 +2475,63 @@ async function handleDeleteDailyTransaction(id) {
     }
 }
 window.handleDeleteDailyTransaction = handleDeleteDailyTransaction;
+
+async function handleEditDailyTransaction(id) {
+    const tx = state.dailyTransactions.find(t => t.id === id);
+    if (!tx) return;
+    
+    const row = document.getElementById(`dr-row-${id}`);
+    if (!row) return;
+    
+    row.innerHTML = `
+        <td>
+            <select id="edit-dr-type-${id}" style="padding: 4px; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color);">
+                <option value="income" ${tx.type === 'income' ? 'selected' : ''}>Ingreso</option>
+                <option value="expense" ${tx.type === 'expense' ? 'selected' : ''}>Egreso</option>
+            </select>
+        </td>
+        <td>
+            <select id="edit-dr-method-${id}" style="padding: 4px; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color);">
+                <option value="Efectivo" ${tx.payment_method === 'Efectivo' ? 'selected' : ''}>Efectivo</option>
+                <option value="Mercado Pago" ${tx.payment_method === 'Mercado Pago' ? 'selected' : ''}>Mercado Pago</option>
+                <option value="Payway" ${tx.payment_method === 'Payway' ? 'selected' : ''}>Payway</option>
+                <option value="Cupones" ${tx.payment_method === 'Cupones' ? 'selected' : ''}>Cupones</option>
+            </select>
+        </td>
+        <td><input type="text" id="edit-dr-desc-${id}" value="${tx.description || ''}" style="padding: 4px; width: 100%; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color);"></td>
+        <td><input type="number" id="edit-dr-amount-${id}" value="${parseFloat(tx.amount)}" step="0.01" min="0.01" style="padding: 4px; width: 90px; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color);"></td>
+        <td></td>
+        <td style="display: flex; gap: 4px; align-items: center;">
+            <button class="btn-primary" onclick="handleSaveEditDailyTransaction(${id})" style="padding: 4px 10px; font-size: 0.8rem;">Guardar</button>
+            <button onclick="loadDailyTransactions()" style="padding: 4px 10px; font-size: 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;">Cancelar</button>
+        </td>
+    `;
+}
+window.handleEditDailyTransaction = handleEditDailyTransaction;
+
+async function handleSaveEditDailyTransaction(id) {
+    const type = document.getElementById(`edit-dr-type-${id}`).value;
+    const payment_method = document.getElementById(`edit-dr-method-${id}`).value;
+    const description = document.getElementById(`edit-dr-desc-${id}`).value;
+    const amount = document.getElementById(`edit-dr-amount-${id}`).value;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/daily-transactions/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: JSON.stringify({ type, amount, payment_method, description })
+        });
+        await safeResponseJSON(response, 'Error al editar el movimiento');
+        Alert.success('Movimiento actualizado.');
+        loadDailyTransactions();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+window.handleSaveEditDailyTransaction = handleSaveEditDailyTransaction;
 
 function openDrCloseModal() {
     document.getElementById('dr-close-form').reset();
