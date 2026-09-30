@@ -686,13 +686,20 @@ function updateMetrics() {
     if (txPwtEl) txPwtEl.textContent = `$${pwtBalance.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     // Caja de Seguridad en Transacciones
+    let sbVal = 0;
     const txSafeBoxEl = document.getElementById('tx-metric-safe-box');
     if (txSafeBoxEl) {
-        let sbVal = 0;
         if (state.balances && state.balances.safe_box !== undefined) {
             sbVal = state.balances.safe_box;
         }
         txSafeBoxEl.textContent = `$${sbVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    // Total Acumulado en Transacciones
+    const txTotalEl = document.getElementById('tx-metric-total');
+    if (txTotalEl) {
+        const totalVal = mpBalance + cashBalance + pwBalance + pwtBalance + sbVal;
+        txTotalEl.textContent = `$${totalVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
 }
 
