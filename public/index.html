@@ -471,9 +471,14 @@
                                 <option value="Sueldos y Retiros">Sueldos y Retiros</option>
                                 <option value="Servicios">Servicios (Luz, Agua, Gas, Internet)</option>
                                 <option value="Mantenimiento">Mantenimiento y Limpieza</option>
+                                <option value="Traspaso de Fondos">Traspaso de Fondos</option>
                                 <option value="Otros">Otros</option>
                             </select>
                         </div>
+                        <button onclick="openTransferModal()" class="btn-primary" style="display: flex; align-items: center; gap: 0.4rem; background: linear-gradient(135deg, #6366f1, #4f46e5); font-weight: 600;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+                            Traspaso de Fondos
+                        </button>
                     </div>
 
                     <!-- Tabla de Transacciones -->
@@ -1468,6 +1473,161 @@
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE PAGO DE PEDIDO -->
+    <div id="modal-pay-order" class="modal-overlay hide">
+        <div class="modal-card" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>Registrar Pago de Pedido</h3>
+                <button class="modal-close-btn" id="close-pay-order-btn">&times;</button>
+            </div>
+            <form id="pay-order-form">
+                <input type="hidden" id="po-order-id">
+                
+                <div class="form-group">
+                    <label>Pedido</label>
+                    <input type="text" id="po-order-name" readonly style="background-color: var(--border-color); cursor: not-allowed; font-weight: 600;">
+                </div>
+
+                <div class="form-group">
+                    <label>Monto Total del Pedido</label>
+                    <input type="text" id="po-order-amount-display" readonly style="background-color: var(--border-color); cursor: not-allowed; font-weight: 700; color: var(--danger); font-size: 1.1rem;">
+                </div>
+
+                <div class="form-group">
+                    <label style="font-weight: 600;">Modo de Pago</label>
+                    <div style="display: flex; gap: 1.5rem; margin-top: 0.5rem; background: var(--bg-body); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
+                            <input type="radio" name="po-split-mode" value="single" checked id="po-mode-single">
+                            1 Medio de Pago
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
+                            <input type="radio" name="po-split-mode" value="split" id="po-mode-split">
+                            Dividir en 2 Medios de Pago
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Single Payment Container -->
+                <div id="po-single-container" class="form-group">
+                    <label for="po-payment-method">Medio de Pago</label>
+                    <select id="po-payment-method">
+                        <option value="Efectivo" selected>Efectivo</option>
+                        <option value="Mercado Pago">Mercado Pago</option>
+                        <option value="Payway">Payway</option>
+                        <option value="Cupones">Cupones</option>
+                        <option value="Caja de Seguridad">Caja de Seguridad</option>
+                    </select>
+                </div>
+
+                <!-- Split Payment Container -->
+                <div id="po-split-container" class="hide">
+                    <div style="background: var(--bg-body); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                        <h4 style="margin-top: 0; margin-bottom: 0.75rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Primer Medio de Pago</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                            <div>
+                                <label for="po-method-1" style="font-size: 0.85rem;">Medio 1</label>
+                                <select id="po-method-1">
+                                    <option value="Payway" selected>Payway</option>
+                                    <option value="Mercado Pago">Mercado Pago</option>
+                                    <option value="Efectivo">Efectivo</option>
+                                    <option value="Cupones">Cupones</option>
+                                    <option value="Caja de Seguridad">Caja de Seguridad</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="po-amount-1" style="font-size: 0.85rem;">Monto 1 ($)</label>
+                                <input type="number" step="0.01" id="po-amount-1" placeholder="0.00" min="0.01">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="background: var(--bg-body); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                        <h4 style="margin-top: 0; margin-bottom: 0.75rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Segundo Medio de Pago</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                            <div>
+                                <label for="po-method-2" style="font-size: 0.85rem;">Medio 2</label>
+                                <select id="po-method-2">
+                                    <option value="Mercado Pago" selected>Mercado Pago</option>
+                                    <option value="Payway">Payway</option>
+                                    <option value="Efectivo">Efectivo</option>
+                                    <option value="Cupones">Cupones</option>
+                                    <option value="Caja de Seguridad">Caja de Seguridad</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="po-amount-2" style="font-size: 0.85rem;">Monto 2 ($)</label>
+                                <input type="number" step="0.01" id="po-amount-2" placeholder="0.00" min="0.01">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" id="cancel-pay-order-btn">Cancelar</button>
+                    <button type="submit" class="btn-primary">Confirmar Pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DE TRASPASO DE FONDOS -->
+    <div id="modal-transfer-funds" class="modal-overlay hide">
+        <div class="modal-card" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>Traspaso de Fondos entre Cuentas</h3>
+                <button class="modal-close-btn" id="close-transfer-modal-btn">&times;</button>
+            </div>
+            <form id="transfer-funds-form">
+                <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); padding: 0.85rem; border-radius: 8px; margin-bottom: 1.25rem; font-size: 0.85rem; color: var(--text-main); line-height: 1.4;">
+                    ℹ️ Permite transferir fondos de una cuenta o medio de pago a otro (ej. de Payway a Mercado Pago) sin alterar la ganancia neta.
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;" class="form-group">
+                    <div>
+                        <label for="tf-origin">Cuenta Origen (Sale)</label>
+                        <select id="tf-origin" required>
+                            <option value="Payway" selected>Payway</option>
+                            <option value="Mercado Pago">Mercado Pago</option>
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Cupones">Cupones</option>
+                            <option value="Caja de Seguridad">Caja de Seguridad</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="tf-destination">Cuenta Destino (Entra)</label>
+                        <select id="tf-destination" required>
+                            <option value="Mercado Pago" selected>Mercado Pago</option>
+                            <option value="Payway">Payway</option>
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Cupones">Cupones</option>
+                            <option value="Caja de Seguridad">Caja de Seguridad</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="tf-amount">Monto a Transferir ($)</label>
+                    <input type="number" step="0.01" id="tf-amount" placeholder="0.00" required min="0.01">
+                </div>
+
+                <div class="form-group">
+                    <label for="tf-date">Fecha del Traspaso</label>
+                    <input type="date" id="tf-date" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="tf-description">Notas / Descripción (Opcional)</label>
+                    <input type="text" id="tf-description" placeholder="Ej: Traspaso de cobro semanal">
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" id="cancel-transfer-modal-btn">Cancelar</button>
+                    <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #6366f1, #4f46e5);">Realizar Traspaso</button>
+                </div>
+            </form>
         </div>
     </div>
 

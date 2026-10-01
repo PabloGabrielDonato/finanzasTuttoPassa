@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS orders (
     amount DECIMAL(12, 2) NOT NULL,
     expected_date DATE NOT NULL,
     status ENUM('pending', 'completed', 'cancelled') NOT NULL DEFAULT 'pending',
+    payment_method VARCHAR(255) NULL,
     transaction_id INT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

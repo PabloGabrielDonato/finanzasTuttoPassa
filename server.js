@@ -284,15 +284,17 @@ app.get('/api/balances', authenticateToken, async (req, res) => {
       SELECT payment_method, 
              SUM(CASE WHEN type='income' THEN amount ELSE -amount END) as balance
       FROM transactions 
-      WHERE payment_method IS NOT NULL
+      WHERE payment_method IS NOT NULL AND payment_method != 'Caja de Seguridad'
       GROUP BY payment_method
     `);
     
     // Calcular también el histórico de Caja de Seguridad
     const safeBoxRows = await db.query(`
-      SELECT SUM(amount) as total
+      SELECT 
+        COALESCE(SUM(CASE WHEN category='Caja de Seguridad' THEN (CASE WHEN type='expense' THEN amount ELSE -amount END) ELSE 0 END), 0) -
+        COALESCE(SUM(CASE WHEN payment_method='Caja de Seguridad' AND category!='Caja de Seguridad' THEN (CASE WHEN type='expense' THEN amount ELSE -amount END) ELSE 0 END), 0)
+        AS total
       FROM transactions
-      WHERE type='expense' AND category='Caja de Seguridad'
     `);
     
     const safeBoxBalance = (safeBoxRows[0] && safeBoxRows[0].total) ? parseFloat(safeBoxRows[0].total) : 0;
@@ -348,11 +350,13 @@ app.post('/api/balances/adjust-safe-box', authenticateToken, async (req, res) =>
   }
   
   try {
-    // Calcular el total actual de Caja de Seguridad (sum of expenses with category 'Caja de Seguridad')
+    // Calcular el total actual de Caja de Seguridad
     const current = await db.query(`
-      SELECT SUM(amount) as total
+      SELECT 
+        COALESCE(SUM(CASE WHEN category='Caja de Seguridad' THEN (CASE WHEN type='expense' THEN amount ELSE -amount END) ELSE 0 END), 0) -
+        COALESCE(SUM(CASE WHEN payment_method='Caja de Seguridad' AND category!='Caja de Seguridad' THEN (CASE WHEN type='expense' THEN amount ELSE -amount END) ELSE 0 END), 0)
+        AS total
       FROM transactions
-      WHERE type='expense' AND category='Caja de Seguridad'
     `);
     
     const currentTotal = (current[0] && current[0].total) ? parseFloat(current[0].total) : 0;
@@ -379,6 +383,64 @@ app.post('/api/balances/adjust-safe-box', authenticateToken, async (req, res) =>
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al ajustar Caja de Seguridad' });
+  }
+});
+
+// Traspaso de Fondos entre Cuentas
+app.post('/api/balances/transfer', authenticateToken, async (req, res) => {
+  const { origin_method, destination_method, amount, date, description } = req.body;
+
+  if (!origin_method || !destination_method || !amount || !date) {
+    return res.status(400).json({ error: 'Todos los campos obligatorios deben ser completados.' });
+  }
+
+  if (origin_method === destination_method) {
+    return res.status(400).json({ error: 'La cuenta de origen y destino deben ser diferentes.' });
+  }
+
+  const numAmount = parseFloat(amount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    return res.status(400).json({ error: 'El monto debe ser mayor que cero.' });
+  }
+
+  const validMethods = ['Efectivo', 'Mercado Pago', 'Payway', 'Cupones', 'Caja de Seguridad'];
+  if (!validMethods.includes(origin_method) || !validMethods.includes(destination_method)) {
+    return res.status(400).json({ error: 'Medio de pago no válido.' });
+  }
+
+  try {
+    const extraDesc = description && description.trim() ? ` (${description.trim()})` : '';
+
+    // 1. Transacción en Cuenta Origen
+    if (origin_method === 'Caja de Seguridad') {
+      await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, 'income', numAmount, 'Caja de Seguridad', `Traspaso desde Caja de Seguridad a ${destination_method}${extraDesc}`, date, null, destination_method]
+      );
+    } else {
+      await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, 'expense', numAmount, 'Traspaso de Fondos', `Traspaso a ${destination_method}${extraDesc}`, date, null, origin_method]
+      );
+    }
+
+    // 2. Transacción en Cuenta Destino
+    if (destination_method === 'Caja de Seguridad') {
+      await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, 'expense', numAmount, 'Caja de Seguridad', `Traspaso desde ${origin_method} a Caja de Seguridad${extraDesc}`, date, null, origin_method === 'Caja de Seguridad' ? 'Efectivo' : origin_method]
+      );
+    } else {
+      await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, 'income', numAmount, 'Traspaso de Fondos', `Traspaso desde ${origin_method}${extraDesc}`, date, null, destination_method]
+      );
+    }
+
+    res.json({ message: 'Traspaso de fondos realizado con éxito.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al realizar el traspaso de fondos.' });
   }
 });
 
@@ -1167,7 +1229,7 @@ app.get('/api/settlements', authenticateToken, async (req, res) => {
       if (t.type === 'income') {
         totalIncome += amt;
       } else {
-        if (t.category === 'Caja de Seguridad') {
+        if (t.category === 'Caja de Seguridad' || t.category === 'Traspaso de Fondos') {
           return; // No es un gasto real, es un movimiento de fondos
         }
         const emp = employees.find(e => e.id === t.employee_id);
@@ -1543,7 +1605,7 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
 
 app.put('/api/orders/:id/status', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body; // 'completed' or 'cancelled'
+  const { status, payments, payment_method } = req.body; // 'completed' or 'cancelled'
   
   if (!['completed', 'cancelled'].includes(status)) {
     return res.status(400).json({ error: 'Estado inválido' });
@@ -1559,17 +1621,46 @@ app.put('/api/orders/:id/status', authenticateToken, async (req, res) => {
     }
     
     let transactionId = null;
+    let paymentSummary = null;
+
     if (status === 'completed') {
-      // Create expense transaction
-      const desc = `Pago de Pedido: ${order.order_number}`;
-      const insertResult = await db.query(
-        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [req.user.id, 'expense', order.amount, 'PEDIDOS', desc, new Date().toISOString().split('T')[0], null]
-      );
-      transactionId = insertResult.insertId;
+      let paymentList = [];
+      if (Array.isArray(payments) && payments.length > 0) {
+        paymentList = payments;
+      } else if (payment_method) {
+        paymentList = [{ payment_method: payment_method, amount: parseFloat(order.amount) }];
+      } else {
+        paymentList = [{ payment_method: 'Efectivo', amount: parseFloat(order.amount) }];
+      }
+
+      // Validate total amount matches order amount
+      const totalPaid = paymentList.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+      if (Math.abs(totalPaid - parseFloat(order.amount)) > 0.05) {
+        return res.status(400).json({ error: 'La suma de los pagos no coincide con el total del pedido.' });
+      }
+
+      const summaryParts = [];
+
+      for (const p of paymentList) {
+        const pMethod = p.payment_method || 'Efectivo';
+        const pAmount = parseFloat(p.amount);
+        const desc = paymentList.length > 1 
+          ? `Pago de Pedido: ${order.order_number} (${pMethod})`
+          : `Pago de Pedido: ${order.order_number}`;
+        
+        const insertResult = await db.query(
+          'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [req.user.id, 'expense', pAmount, 'PEDIDOS', desc, new Date().toISOString().split('T')[0], null, pMethod]
+        );
+        if (!transactionId) transactionId = insertResult.insertId;
+        
+        summaryParts.push(paymentList.length > 1 ? `${pMethod} ($${pAmount.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : pMethod);
+      }
+
+      paymentSummary = summaryParts.join(' / ');
     }
     
-    await db.query('UPDATE orders SET status = ?, transaction_id = ? WHERE id = ?', [status, transactionId, id]);
+    await db.query('UPDATE orders SET status = ?, transaction_id = ?, payment_method = ? WHERE id = ?', [status, transactionId, paymentSummary, id]);
     res.json({ message: 'Estado del pedido actualizado' });
   } catch (err) {
     console.error(err);
@@ -1582,13 +1673,12 @@ app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
   try {
     const orders = await db.query('SELECT * FROM orders WHERE id = ?', [id]);
     if (orders.length === 0) return res.status(404).json({ error: 'Pedido no encontrado' });
+    const order = orders[0];
     
-    // We optionally could delete the associated transaction if we want cascading logic, 
-    // but usually deleting the order just deletes the order (DB FK is SET NULL).
-    // Given user preference, deleting the order is just for cleaning up mistakes.
-    if (orders[0].transaction_id) {
-        await db.query('DELETE FROM transactions WHERE id = ?', [orders[0].transaction_id]);
+    if (order.transaction_id) {
+      await db.query('DELETE FROM transactions WHERE id = ?', [order.transaction_id]);
     }
+    await db.query('DELETE FROM transactions WHERE description LIKE ?', [`Pago de Pedido: ${order.order_number}%`]);
     
     await db.query('DELETE FROM orders WHERE id = ?', [id]);
     res.json({ message: 'Pedido eliminado' });

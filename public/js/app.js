@@ -273,6 +273,8 @@ function initEventListeners() {
     // Pedidos a Proveedores
     const orderForm = document.getElementById('order-form');
     if (orderForm) orderForm.addEventListener('submit', handleSaveOrder);
+    initPayOrderEvents();
+    initTransferFundsEvents();
     
     // Inventario y Producción
     initInventoryListeners();
@@ -596,6 +598,9 @@ function updateMetrics() {
 
     state.transactions.forEach(t => {
         const amt = parseFloat(t.amount);
+        if (t.category === 'Traspaso de Fondos') {
+            return; // Movimiento interno de fondos entre cuentas
+        }
         if (t.type === 'income') {
             income += amt;
         } else {
@@ -2828,7 +2833,8 @@ function renderOrdersTable() {
                     </button>
                 `;
             } else if (order.status === 'completed') {
-                statusBadge = '<span class="status-badge" style="background:#d1fae5; color:#059669; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Pagado</span>';
+                const methodInfo = order.payment_method ? `<div style="font-size: 0.78rem; color: #4b5563; font-weight: 500; margin-top: 3px;">💳 ${order.payment_method}</div>` : '';
+                statusBadge = `<span class="status-badge" style="background:#d1fae5; color:#059669; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Pagado</span>${methodInfo}`;
             } else {
                 statusBadge = '<span class="status-badge" style="background:#fee2e2; color:#dc2626; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Cancelado</span>';
             }
@@ -2846,7 +2852,7 @@ function renderOrdersTable() {
                 <td style="font-weight: 500;">${order.order_number}</td>
                 <td style="font-weight: 600; color: #dc2626;">$${parseFloat(order.amount).toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
                 <td>${statusBadge}</td>
-                <td style="display: flex; gap: 0.5rem; justify-content: center;">${actionButtons}</td>
+                <td style="display: flex; gap: 0.5rem; justify-content: center; align-items: center;">${actionButtons}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -2881,11 +2887,12 @@ async function handleSaveOrder(e) {
 }
 
 async function handleUpdateOrderStatus(id, status) {
-    let msg = status === 'completed' 
-        ? '¿Confirmas que este pedido ya fue PAGADO? Se registrará como un Egreso en tu Balance bajo la categoría "PEDIDOS".'
-        : '¿Confirmas que deseas CANCELAR este pedido?';
-        
-    if (!await Alert.confirm(msg, 'Confirmar Acción', 'Sí, continuar')) return;
+    if (status === 'completed') {
+        openPayOrderModal(id);
+        return;
+    }
+
+    if (!await Alert.confirm('¿Confirmas que deseas CANCELAR este pedido?', 'Confirmar Acción', 'Sí, cancelar')) return;
     
     try {
         const response = await fetch(`${API_URL}/api/orders/${id}/status`, {
@@ -2898,8 +2905,8 @@ async function handleUpdateOrderStatus(id, status) {
         });
         
         await safeResponseJSON(response, 'Error al actualizar el pedido');
-        Alert.success(status === 'completed' ? 'Pedido marcado como pagado' : 'Pedido cancelado');
-        loadData(); // Recargar todo para que impacte el egreso en el dashboard
+        Alert.success('Pedido cancelado');
+        loadData();
     } catch (err) {
         Alert.error(err.message);
     }
@@ -3214,5 +3221,229 @@ async function handleSaveBaking(e) {
         Alert.error(err.message);
     }
 }
+
+// --- MODAL DE PAGO DE PEDIDOS ---
+let currentPayOrderId = null;
+
+function openPayOrderModal(orderId) {
+    const order = state.orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    currentPayOrderId = orderId;
+    document.getElementById('po-order-id').value = order.id;
+    document.getElementById('po-order-name').value = order.order_number;
+    const amountVal = parseFloat(order.amount);
+    document.getElementById('po-order-amount-display').value = `$${amountVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    document.getElementById('po-mode-single').checked = true;
+    document.getElementById('po-single-container').classList.remove('hide');
+    document.getElementById('po-split-container').classList.add('hide');
+
+    document.getElementById('po-payment-method').value = 'Efectivo';
+    document.getElementById('po-method-1').value = 'Payway';
+    document.getElementById('po-method-2').value = 'Mercado Pago';
+
+    const half = (amountVal / 2).toFixed(2);
+    const remainder = (amountVal - parseFloat(half)).toFixed(2);
+    document.getElementById('po-amount-1').value = half;
+    document.getElementById('po-amount-2').value = remainder;
+
+    document.getElementById('modal-pay-order').classList.remove('hide');
+}
+
+function closePayOrderModal() {
+    document.getElementById('modal-pay-order').classList.add('hide');
+    currentPayOrderId = null;
+}
+
+function initPayOrderEvents() {
+    const closeBtn = document.getElementById('close-pay-order-btn');
+    const cancelBtn = document.getElementById('cancel-pay-order-btn');
+    const form = document.getElementById('pay-order-form');
+    const modeSingle = document.getElementById('po-mode-single');
+    const modeSplit = document.getElementById('po-mode-split');
+    const amount1Input = document.getElementById('po-amount-1');
+    const amount2Input = document.getElementById('po-amount-2');
+
+    if (closeBtn) closeBtn.addEventListener('click', closePayOrderModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closePayOrderModal);
+
+    if (modeSingle) {
+        modeSingle.addEventListener('change', () => {
+            document.getElementById('po-single-container').classList.remove('hide');
+            document.getElementById('po-split-container').classList.add('hide');
+        });
+    }
+
+    if (modeSplit) {
+        modeSplit.addEventListener('change', () => {
+            document.getElementById('po-single-container').classList.add('hide');
+            document.getElementById('po-split-container').classList.remove('hide');
+            const order = state.orders.find(o => o.id === currentPayOrderId);
+            if (order) {
+                const total = parseFloat(order.amount);
+                const half = (total / 2).toFixed(2);
+                const rem = (total - parseFloat(half)).toFixed(2);
+                amount1Input.value = half;
+                amount2Input.value = rem;
+            }
+        });
+    }
+
+    if (amount1Input) {
+        amount1Input.addEventListener('input', () => {
+            const order = state.orders.find(o => o.id === currentPayOrderId);
+            if (order) {
+                const total = parseFloat(order.amount);
+                const val1 = parseFloat(amount1Input.value) || 0;
+                amount2Input.value = Math.max(0, total - val1).toFixed(2);
+            }
+        });
+    }
+
+    if (amount2Input) {
+        amount2Input.addEventListener('input', () => {
+            const order = state.orders.find(o => o.id === currentPayOrderId);
+            if (order) {
+                const total = parseFloat(order.amount);
+                const val2 = parseFloat(amount2Input.value) || 0;
+                amount1Input.value = Math.max(0, total - val2).toFixed(2);
+            }
+        });
+    }
+
+    if (form) {
+        form.addEventListener('submit', handleConfirmPayOrder);
+    }
+}
+
+async function handleConfirmPayOrder(e) {
+    e.preventDefault();
+    const orderId = parseInt(document.getElementById('po-order-id').value);
+    const order = state.orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    const isSplit = document.getElementById('po-mode-split').checked;
+    let payments = [];
+
+    if (!isSplit) {
+        const method = document.getElementById('po-payment-method').value;
+        payments = [{ payment_method: method, amount: parseFloat(order.amount) }];
+    } else {
+        const m1 = document.getElementById('po-method-1').value;
+        const a1 = parseFloat(document.getElementById('po-amount-1').value) || 0;
+        const m2 = document.getElementById('po-method-2').value;
+        const a2 = parseFloat(document.getElementById('po-amount-2').value) || 0;
+
+        if (a1 <= 0 || a2 <= 0) {
+            Alert.error('Ambos montos deben ser mayores a cero.');
+            return;
+        }
+
+        const totalPaid = a1 + a2;
+        if (Math.abs(totalPaid - parseFloat(order.amount)) > 0.05) {
+            Alert.error('La suma de los dos montos debe ser igual al total del pedido.');
+            return;
+        }
+
+        payments = [
+            { payment_method: m1, amount: a1 },
+            { payment_method: m2, amount: a2 }
+        ];
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: 'completed', payments })
+        });
+
+        await safeResponseJSON(response, 'Error al registrar pago del pedido');
+        Alert.success('Pedido marcado como pagado exitosamente');
+        closePayOrderModal();
+        loadData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+// --- MODAL DE TRASPASO DE FONDOS ---
+function openTransferModal() {
+    const form = document.getElementById('transfer-funds-form');
+    if (form) form.reset();
+
+    const dateInput = document.getElementById('tf-date');
+    if (dateInput) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
+
+    document.getElementById('tf-origin').value = 'Payway';
+    document.getElementById('tf-destination').value = 'Mercado Pago';
+
+    document.getElementById('modal-transfer-funds').classList.remove('hide');
+}
+
+function closeTransferModal() {
+    document.getElementById('modal-transfer-funds').classList.add('hide');
+}
+
+function initTransferFundsEvents() {
+    const closeBtn = document.getElementById('close-transfer-modal-btn');
+    const cancelBtn = document.getElementById('cancel-transfer-modal-btn');
+    const form = document.getElementById('transfer-funds-form');
+
+    if (closeBtn) closeBtn.addEventListener('click', closeTransferModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeTransferModal);
+
+    if (form) form.addEventListener('submit', handleTransferSubmit);
+}
+
+async function handleTransferSubmit(e) {
+    e.preventDefault();
+    const origin_method = document.getElementById('tf-origin').value;
+    const destination_method = document.getElementById('tf-destination').value;
+    const amount = parseFloat(document.getElementById('tf-amount').value) || 0;
+    const date = document.getElementById('tf-date').value;
+    const description = document.getElementById('tf-description').value;
+
+    if (origin_method === destination_method) {
+        Alert.error('La cuenta de origen y de destino deben ser diferentes.');
+        return;
+    }
+
+    if (amount <= 0) {
+        Alert.error('El monto a transferir debe ser mayor que cero.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/balances/transfer`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ origin_method, destination_method, amount, date, description })
+        });
+
+        await safeResponseJSON(response, 'Error al realizar traspaso de fondos');
+        Alert.success('Traspaso de fondos realizado con éxito');
+        closeTransferModal();
+        loadData();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+window.openTransferModal = openTransferModal;
+window.closeTransferModal = closeTransferModal;
+window.openPayOrderModal = openPayOrderModal;
+window.closePayOrderModal = closePayOrderModal;
+window.handleUpdateOrderStatus = handleUpdateOrderStatus;
+window.handleDeleteOrder = handleDeleteOrder;
 
 
