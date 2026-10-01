@@ -3235,6 +3235,11 @@ function openPayOrderModal(orderId) {
     const amountVal = parseFloat(order.amount);
     document.getElementById('po-order-amount-display').value = `$${amountVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+    const payDateInput = document.getElementById('po-payment-date');
+    if (payDateInput) {
+        payDateInput.value = new Date().toISOString().split('T')[0];
+    }
+
     document.getElementById('po-mode-single').checked = true;
     document.getElementById('po-single-container').classList.remove('hide');
     document.getElementById('po-split-container').classList.add('hide');
@@ -3352,6 +3357,8 @@ async function handleConfirmPayOrder(e) {
         ];
     }
 
+    const payment_date = document.getElementById('po-payment-date') ? document.getElementById('po-payment-date').value : new Date().toISOString().split('T')[0];
+
     try {
         const response = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
             method: 'PUT',
@@ -3359,7 +3366,7 @@ async function handleConfirmPayOrder(e) {
                 'Authorization': `Bearer ${state.token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ status: 'completed', payments })
+            body: JSON.stringify({ status: 'completed', payments, payment_date })
         });
 
         await safeResponseJSON(response, 'Error al registrar pago del pedido');

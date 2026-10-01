@@ -411,31 +411,17 @@ app.post('/api/balances/transfer', authenticateToken, async (req, res) => {
   try {
     const extraDesc = description && description.trim() ? ` (${description.trim()})` : '';
 
-    // 1. Transacción en Cuenta Origen
-    if (origin_method === 'Caja de Seguridad') {
-      await db.query(
-        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [req.user.id, 'income', numAmount, 'Caja de Seguridad', `Traspaso desde Caja de Seguridad a ${destination_method}${extraDesc}`, date, null, destination_method]
-      );
-    } else {
-      await db.query(
-        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [req.user.id, 'expense', numAmount, 'Traspaso de Fondos', `Traspaso a ${destination_method}${extraDesc}`, date, null, origin_method]
-      );
-    }
+    // 1. Transacción en Cuenta Origen (Egreso de la cuenta de origen)
+    await db.query(
+      'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'expense', numAmount, 'Traspaso de Fondos', `Traspaso a ${destination_method}${extraDesc}`, date, null, origin_method]
+    );
 
-    // 2. Transacción en Cuenta Destino
-    if (destination_method === 'Caja de Seguridad') {
-      await db.query(
-        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [req.user.id, 'expense', numAmount, 'Caja de Seguridad', `Traspaso desde ${origin_method} a Caja de Seguridad${extraDesc}`, date, null, origin_method === 'Caja de Seguridad' ? 'Efectivo' : origin_method]
-      );
-    } else {
-      await db.query(
-        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [req.user.id, 'income', numAmount, 'Traspaso de Fondos', `Traspaso desde ${origin_method}${extraDesc}`, date, null, destination_method]
-      );
-    }
+    // 2. Transacción en Cuenta Destino (Ingreso a la cuenta de destino)
+    await db.query(
+      'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'income', numAmount, 'Traspaso de Fondos', `Traspaso desde ${origin_method}${extraDesc}`, date, null, destination_method]
+    );
 
     res.json({ message: 'Traspaso de fondos realizado con éxito.' });
   } catch (err) {
@@ -1605,7 +1591,7 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
 
 app.put('/api/orders/:id/status', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { status, payments, payment_method } = req.body; // 'completed' or 'cancelled'
+  const { status, payments, payment_method, payment_date } = req.body; // 'completed' or 'cancelled'
   
   if (!['completed', 'cancelled'].includes(status)) {
     return res.status(400).json({ error: 'Estado inválido' });
@@ -1640,6 +1626,7 @@ app.put('/api/orders/:id/status', authenticateToken, async (req, res) => {
       }
 
       const summaryParts = [];
+      const txDate = payment_date || new Date().toISOString().split('T')[0];
 
       for (const p of paymentList) {
         const pMethod = p.payment_method || 'Efectivo';
@@ -1650,7 +1637,7 @@ app.put('/api/orders/:id/status', authenticateToken, async (req, res) => {
         
         const insertResult = await db.query(
           'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [req.user.id, 'expense', pAmount, 'PEDIDOS', desc, new Date().toISOString().split('T')[0], null, pMethod]
+          [req.user.id, 'expense', pAmount, 'PEDIDOS', desc, txDate, null, pMethod]
         );
         if (!transactionId) transactionId = insertResult.insertId;
         
