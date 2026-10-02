@@ -1647,7 +1647,8 @@ app.put('/api/orders/:id/status', authenticateToken, async (req, res) => {
       paymentSummary = summaryParts.join(' / ');
     }
     
-    await db.query('UPDATE orders SET status = ?, transaction_id = ?, payment_method = ? WHERE id = ?', [status, transactionId, paymentSummary, id]);
+    const txDateToSave = status === 'completed' ? (payment_date || new Date().toISOString().split('T')[0]) : null;
+    await db.query('UPDATE orders SET status = ?, transaction_id = ?, payment_method = ?, payment_date = ? WHERE id = ?', [status, transactionId, paymentSummary, txDateToSave, id]);
     res.json({ message: 'Estado del pedido actualizado' });
   } catch (err) {
     console.error(err);

@@ -2834,7 +2834,8 @@ function renderOrdersTable() {
                 `;
             } else if (order.status === 'completed') {
                 const methodInfo = order.payment_method ? `<div style="font-size: 0.78rem; color: #4b5563; font-weight: 500; margin-top: 3px;">💳 ${order.payment_method}</div>` : '';
-                statusBadge = `<span class="status-badge" style="background:#d1fae5; color:#059669; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Pagado</span>${methodInfo}`;
+                const payDateText = order.payment_date ? ` (${new Date(order.payment_date + 'T00:00:00').toLocaleDateString('es-AR')})` : '';
+                statusBadge = `<span class="status-badge" style="background:#d1fae5; color:#059669; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Pagado${payDateText}</span>${methodInfo}`;
             } else {
                 statusBadge = '<span class="status-badge" style="background:#fee2e2; color:#dc2626; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Cancelado</span>';
             }
