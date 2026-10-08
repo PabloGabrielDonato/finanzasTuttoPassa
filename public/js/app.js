@@ -221,6 +221,7 @@ function initEventListeners() {
     // Servicios Formulario
     document.getElementById('service-type-form').addEventListener('submit', handleSaveServiceType);
     document.getElementById('service-payment-form').addEventListener('submit', handleSaveServicePayment);
+    initServicePaymentEvents();
 
     // Deudas Formulario
     document.getElementById('debt-form').addEventListener('submit', handleSaveDebt);
@@ -1577,6 +1578,68 @@ function renderServiceTypesTable() {
     });
 }
 
+function initServicePaymentEvents() {
+    const modeSingle = document.getElementById('sp-mode-single');
+    const modeSplit = document.getElementById('sp-mode-split');
+    const totalAmountInput = document.getElementById('sp-amount');
+    const amount1Input = document.getElementById('sp-amount-1');
+    const amount2Input = document.getElementById('sp-amount-2');
+    const singleContainer = document.getElementById('sp-single-container');
+    const splitContainer = document.getElementById('sp-split-container');
+
+    const updateSplitAmounts = () => {
+        const total = parseFloat(totalAmountInput.value) || 0;
+        if (total > 0) {
+            const half = (total / 2).toFixed(2);
+            const rem = (total - parseFloat(half)).toFixed(2);
+            if (amount1Input) amount1Input.value = half;
+            if (amount2Input) amount2Input.value = rem;
+        } else {
+            if (amount1Input) amount1Input.value = '';
+            if (amount2Input) amount2Input.value = '';
+        }
+    };
+
+    if (modeSingle) {
+        modeSingle.addEventListener('change', () => {
+            if (singleContainer) singleContainer.classList.remove('hide');
+            if (splitContainer) splitContainer.classList.add('hide');
+        });
+    }
+
+    if (modeSplit) {
+        modeSplit.addEventListener('change', () => {
+            if (singleContainer) singleContainer.classList.add('hide');
+            if (splitContainer) splitContainer.classList.remove('hide');
+            updateSplitAmounts();
+        });
+    }
+
+    if (totalAmountInput) {
+        totalAmountInput.addEventListener('input', () => {
+            if (modeSplit && modeSplit.checked) {
+                updateSplitAmounts();
+            }
+        });
+    }
+
+    if (amount1Input) {
+        amount1Input.addEventListener('input', () => {
+            const total = parseFloat(totalAmountInput.value) || 0;
+            const val1 = parseFloat(amount1Input.value) || 0;
+            if (amount2Input) amount2Input.value = Math.max(0, total - val1).toFixed(2);
+        });
+    }
+
+    if (amount2Input) {
+        amount2Input.addEventListener('input', () => {
+            const total = parseFloat(totalAmountInput.value) || 0;
+            const val2 = parseFloat(amount2Input.value) || 0;
+            if (amount1Input) amount1Input.value = Math.max(0, total - val2).toFixed(2);
+        });
+    }
+}
+
 function renderServicePaymentsTable() {
     const tbody = document.getElementById('service-payments-tbody');
     if (!tbody) return;
@@ -1584,7 +1647,7 @@ function renderServicePaymentsTable() {
     tbody.innerHTML = '';
 
     if (state.servicePayments.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No hay pagos registrados para este mes.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">No hay pagos registrados para este mes.</td></tr>`;
         return;
     }
 
@@ -1600,11 +1663,16 @@ function renderServicePaymentsTable() {
             ? `<a href="${p.invoice_path}" target="_blank" class="btn-view-doc">📄 Ver Factura</a>`
             : `<span class="text-muted" style="font-size: 0.85rem;">— No adjunta</span>`;
 
+        const paymentMethodInfo = p.payment_method 
+            ? `<div style="font-size: 0.82rem; font-weight: 500; color: var(--text-main);">💳 ${p.payment_method}</div>` 
+            : `<span class="text-muted" style="font-size: 0.85rem;">—</span>`;
+
         tr.innerHTML = `
             <td><strong>${p.service_name}</strong></td>
             <td>${p.month}</td>
             <td>${p.payment_date}</td>
             <td style="font-weight: 600; color: var(--danger);">${formattedAmount}</td>
+            <td>${paymentMethodInfo}</td>
             <td>${ticketBtn}</td>
             <td>${invoiceBtn}</td>
             <td>
@@ -1665,10 +1733,55 @@ async function handleSaveServicePayment(e) {
     const form = e.target;
     const formData = new FormData();
 
-    formData.append('service_type_id', document.getElementById('sp-service-type').value);
-    formData.append('month', document.getElementById('sp-month').value);
-    formData.append('payment_date', document.getElementById('sp-date').value);
-    formData.append('amount', document.getElementById('sp-amount').value);
+    const service_type_id = document.getElementById('sp-service-type').value;
+    const month = document.getElementById('sp-month').value;
+    const payment_date = document.getElementById('sp-date').value;
+    const totalAmount = parseFloat(document.getElementById('sp-amount').value) || 0;
+
+    if (!service_type_id || !month || !payment_date || totalAmount <= 0) {
+        Alert.error('Por favor complete todos los campos obligatorios.');
+        return;
+    }
+
+    const isSplit = document.getElementById('sp-mode-split') && document.getElementById('sp-mode-split').checked;
+    let payments = [];
+    let paymentMethodSummary = '';
+
+    if (!isSplit) {
+        const method = document.getElementById('sp-payment-method').value;
+        payments = [{ payment_method: method, amount: totalAmount }];
+        paymentMethodSummary = method;
+    } else {
+        const m1 = document.getElementById('sp-method-1').value;
+        const a1 = parseFloat(document.getElementById('sp-amount-1').value) || 0;
+        const m2 = document.getElementById('sp-method-2').value;
+        const a2 = parseFloat(document.getElementById('sp-amount-2').value) || 0;
+
+        if (a1 <= 0 || a2 <= 0) {
+            Alert.error('Ambos montos deben ser mayores a cero.');
+            return;
+        }
+
+        const totalPaid = a1 + a2;
+        if (Math.abs(totalPaid - totalAmount) > 0.05) {
+            Alert.error('La suma de los dos pagos debe ser igual al monto total del servicio.');
+            return;
+        }
+
+        payments = [
+            { payment_method: m1, amount: a1 },
+            { payment_method: m2, amount: a2 }
+        ];
+
+        paymentMethodSummary = `${m1} ($${a1.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) / ${m2} ($${a2.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+    }
+
+    formData.append('service_type_id', service_type_id);
+    formData.append('month', month);
+    formData.append('payment_date', payment_date);
+    formData.append('amount', totalAmount.toString());
+    formData.append('payment_method', paymentMethodSummary);
+    formData.append('payments', JSON.stringify(payments));
 
     const ticketFile = document.getElementById('sp-ticket').files[0];
     const invoiceFile = document.getElementById('sp-invoice').files[0];
@@ -1689,6 +1802,13 @@ async function handleSaveServicePayment(e) {
 
         form.reset();
         
+        // Reset a modo 1 medio de pago por defecto
+        if (document.getElementById('sp-mode-single')) {
+            document.getElementById('sp-mode-single').checked = true;
+            if (document.getElementById('sp-single-container')) document.getElementById('sp-single-container').classList.remove('hide');
+            if (document.getElementById('sp-split-container')) document.getElementById('sp-split-container').classList.add('hide');
+        }
+
         // Volver a establecer mes y fecha actuales por defecto en el formulario
         const today = new Date();
         document.getElementById('sp-month').value = today.toISOString().slice(0, 7);

@@ -632,6 +632,76 @@
                                 <label for="sp-amount">Monto ($)</label>
                                 <input type="number" step="0.01" id="sp-amount" placeholder="0.00" required min="0.01">
                             </div>
+
+                            <div class="form-group">
+                                <label style="font-weight: 600;">Modo de Pago</label>
+                                <div style="display: flex; gap: 1.5rem; margin-top: 0.5rem; background: var(--bg-body); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
+                                        <input type="radio" name="sp-split-mode" value="single" checked id="sp-mode-single">
+                                        1 Medio de Pago
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
+                                        <input type="radio" name="sp-split-mode" value="split" id="sp-mode-split">
+                                        Dividir en 2 Medios de Pago
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Single Payment Container -->
+                            <div id="sp-single-container" class="form-group">
+                                <label for="sp-payment-method">Medio de Pago</label>
+                                <select id="sp-payment-method">
+                                    <option value="Efectivo" selected>Efectivo</option>
+                                    <option value="Mercado Pago">Mercado Pago</option>
+                                    <option value="Payway">Payway</option>
+                                    <option value="Cupones">Cupones</option>
+                                    <option value="Caja de Seguridad">Caja de Seguridad</option>
+                                </select>
+                            </div>
+
+                            <!-- Split Payment Container -->
+                            <div id="sp-split-container" class="hide">
+                                <div style="background: var(--bg-body); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                                    <h4 style="margin-top: 0; margin-bottom: 0.75rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Primer Medio de Pago</h4>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                                        <div>
+                                            <label for="sp-method-1" style="font-size: 0.85rem;">Medio 1</label>
+                                            <select id="sp-method-1">
+                                                <option value="Payway" selected>Payway</option>
+                                                <option value="Mercado Pago">Mercado Pago</option>
+                                                <option value="Efectivo">Efectivo</option>
+                                                <option value="Cupones">Cupones</option>
+                                                <option value="Caja de Seguridad">Caja de Seguridad</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label for="sp-amount-1" style="font-size: 0.85rem;">Monto 1 ($)</label>
+                                            <input type="number" step="0.01" id="sp-amount-1" placeholder="0.00" min="0.01">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style="background: var(--bg-body); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                                    <h4 style="margin-top: 0; margin-bottom: 0.75rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Segundo Medio de Pago</h4>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                                        <div>
+                                            <label for="sp-method-2" style="font-size: 0.85rem;">Medio 2</label>
+                                            <select id="sp-method-2">
+                                                <option value="Mercado Pago" selected>Mercado Pago</option>
+                                                <option value="Payway">Payway</option>
+                                                <option value="Efectivo">Efectivo</option>
+                                                <option value="Cupones">Cupones</option>
+                                                <option value="Caja de Seguridad">Caja de Seguridad</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label for="sp-amount-2" style="font-size: 0.85rem;">Monto 2 ($)</label>
+                                            <input type="number" step="0.01" id="sp-amount-2" placeholder="0.00" min="0.01">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="form-group">
                                 <label for="sp-ticket">Ticket de Pago (Comprobante)</label>
                                 <input type="file" id="sp-ticket" accept="image/*,application/pdf">
@@ -687,6 +757,7 @@
                                     <th>Mes Pago</th>
                                     <th>Fecha Pago</th>
                                     <th>Monto</th>
+                                    <th>Método de Pago</th>
                                     <th>Ticket / Comprobante</th>
                                     <th>Factura</th>
                                     <th>Acción</th>

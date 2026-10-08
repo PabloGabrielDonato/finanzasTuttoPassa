@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS service_payments (
     month VARCHAR(7) NOT NULL,
     amount DECIMAL(12, 2) NOT NULL,
     payment_date DATE NOT NULL,
+    payment_method VARCHAR(255) NULL,
     ticket_path VARCHAR(255) NULL,
     invoice_path VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

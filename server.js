@@ -878,7 +878,7 @@ app.post('/api/service-payments', authenticateToken, upload.fields([
   { name: 'ticket', maxCount: 1 },
   { name: 'invoice', maxCount: 1 }
 ]), async (req, res) => {
-  const { service_type_id, month, amount, payment_date } = req.body;
+  const { service_type_id, month, amount, payment_date, payment_method } = req.body;
 
   if (!service_type_id || !month || !amount || !payment_date) {
     return res.status(400).json({ error: 'Todos los campos son obligatorios.' });
@@ -897,15 +897,51 @@ app.post('/api/service-payments', authenticateToken, upload.fields([
     }
     const serviceName = services[0].name;
 
-    // 2. Crear transacción asociada en la tabla transactions
+    // Parse array of payments if sent (for split payments)
+    let paymentList = [];
+    if (req.body.payments) {
+      try {
+        paymentList = typeof req.body.payments === 'string' ? JSON.parse(req.body.payments) : req.body.payments;
+      } catch (e) {
+        paymentList = [];
+      }
+    }
+    if (!Array.isArray(paymentList) || paymentList.length === 0) {
+      if (payment_method) {
+        paymentList = [{ payment_method: payment_method, amount: numericAmount }];
+      } else {
+        paymentList = [{ payment_method: 'Efectivo', amount: numericAmount }];
+      }
+    }
+
+    // Validate total amount matches service amount
+    const totalPaid = paymentList.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    if (Math.abs(totalPaid - numericAmount) > 0.05) {
+      return res.status(400).json({ error: 'La suma de los pagos no coincide con el total del servicio.' });
+    }
+
+    // 2. Crear transacción(es) asociada(s) en la tabla transactions
     const category = 'Servicios (Luz, Agua, Gas, Internet)';
-    const description = `Pago de ${serviceName} - Mes: ${month}`;
-    
-    const txResult = await db.query(
-      'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [req.user.id, 'expense', numericAmount, category, description, payment_date, null]
-    );
-    const transactionId = txResult.insertId;
+    let transactionId = null;
+    const summaryParts = [];
+
+    for (const p of paymentList) {
+      const pMethod = p.payment_method || 'Efectivo';
+      const pAmount = parseFloat(p.amount);
+      const description = paymentList.length > 1
+        ? `Pago de ${serviceName} - Mes: ${month} (${pMethod})`
+        : `Pago de ${serviceName} - Mes: ${month}`;
+
+      const txResult = await db.query(
+        'INSERT INTO transactions (user_id, type, amount, category, description, date, employee_id, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.user.id, 'expense', pAmount, category, description, payment_date, null, pMethod]
+      );
+      if (!transactionId) transactionId = txResult.insertId;
+
+      summaryParts.push(paymentList.length > 1 ? `${pMethod} ($${pAmount.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : pMethod);
+    }
+
+    const paymentSummary = summaryParts.join(' / ');
 
     // 3. Procesar rutas de archivos subidos
     const ticketPath = req.files && req.files['ticket'] ? '/uploads/' + req.files['ticket'][0].filename : null;
@@ -913,8 +949,8 @@ app.post('/api/service-payments', authenticateToken, upload.fields([
 
     // 4. Guardar el pago del servicio
     const spResult = await db.query(
-      'INSERT INTO service_payments (service_type_id, transaction_id, month, amount, payment_date, ticket_path, invoice_path) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [service_type_id, transactionId, month, numericAmount, payment_date, ticketPath, invoicePath]
+      'INSERT INTO service_payments (service_type_id, transaction_id, month, amount, payment_date, payment_method, ticket_path, invoice_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [service_type_id, transactionId, month, numericAmount, payment_date, paymentSummary, ticketPath, invoicePath]
     );
 
     res.status(201).json({
@@ -926,6 +962,7 @@ app.post('/api/service-payments', authenticateToken, upload.fields([
         month,
         amount: numericAmount,
         payment_date,
+        payment_method: paymentSummary,
         ticket_path: ticketPath,
         invoice_path: invoicePath
       }
@@ -951,6 +988,13 @@ app.delete('/api/service-payments/:id', authenticateToken, async (req, res) => {
     // Borrar transacción vinculada
     if (payment.transaction_id) {
       await db.query('DELETE FROM transactions WHERE id = ?', [payment.transaction_id]);
+    }
+
+    // Borrar transacciones secundarias asociadas si dividió medios de pago
+    const services = await db.query('SELECT name FROM service_types WHERE id = ?', [payment.service_type_id]);
+    if (services.length > 0) {
+      const serviceName = services[0].name;
+      await db.query('DELETE FROM transactions WHERE description LIKE ?', [`Pago de ${serviceName} - Mes: ${payment.month}%`]);
     }
 
     // Borrar archivos físicos
