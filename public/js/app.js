@@ -72,6 +72,20 @@ const Alert = {
     }
 };
 
+// Formateador robusto de fechas (soporta ISO UTC, YYYY-MM-DD y timestamp sin desfasaje de zona horaria)
+function formatDisplayDate(dateVal) {
+    if (!dateVal) return '—';
+    const str = String(dateVal).trim();
+    if (!str || str === 'null' || str === 'undefined') return '—';
+    const datePart = str.includes('T') ? str.split('T')[0] : str.split(' ')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+        const [year, month, day] = datePart.split('-');
+        return `${day}/${month}/${year}`;
+    }
+    const d = new Date(dateVal);
+    return isNaN(d.getTime()) ? str : d.toLocaleDateString('es-AR');
+}
+
 // Configuración y Estado Global
 const API_URL = window.location.origin;
 let state = {
@@ -112,6 +126,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const contrDate = document.getElementById('contr-date');
     if (contrDate) contrDate.value = today.toISOString().slice(0, 10);
+
+    const orDate = document.getElementById('or-expected-date');
+    if (orDate) orDate.value = today.toISOString().slice(0, 10);
 
     const drDateSelector = document.getElementById('dr-date-selector');
     if (drDateSelector) {
@@ -1670,7 +1687,7 @@ function renderServicePaymentsTable() {
         tr.innerHTML = `
             <td><strong>${p.service_name}</strong></td>
             <td>${p.month}</td>
-            <td>${p.payment_date}</td>
+            <td>${formatDisplayDate(p.payment_date)}</td>
             <td style="font-weight: 600; color: var(--danger);">${formattedAmount}</td>
             <td>${paymentMethodInfo}</td>
             <td>${ticketBtn}</td>
@@ -2040,7 +2057,7 @@ async function openDebtHistoryModal(id, name) {
             tr.innerHTML = `
                 <td><strong>Cuota ${p.installment_number}</strong></td>
                 <td>${formattedAmount}</td>
-                <td>${p.payment_date}</td>
+                <td>${formatDisplayDate(p.payment_date)}</td>
                 <td>${ticketBtn}</td>
                 <td>
                     <button class="btn-danger btn-sm" onclick="handleRevertDebtPayment(${p.id}, ${id}, '${name}')">
@@ -2259,7 +2276,7 @@ async function openCCHistoryModal(id, cardholder) {
             tr.innerHTML = `
                 <td><strong>Cuota ${p.installment_number}</strong></td>
                 <td>${formattedAmount}</td>
-                <td>${p.payment_date}</td>
+                <td>${formatDisplayDate(p.payment_date)}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -2954,7 +2971,7 @@ function renderOrdersTable() {
                 `;
             } else if (order.status === 'completed') {
                 const methodInfo = order.payment_method ? `<div style="font-size: 0.78rem; color: #4b5563; font-weight: 500; margin-top: 3px;">💳 ${order.payment_method}</div>` : '';
-                const payDateText = order.payment_date ? ` (${new Date(order.payment_date + 'T00:00:00').toLocaleDateString('es-AR')})` : '';
+                const payDateText = order.payment_date ? ` (${formatDisplayDate(order.payment_date)})` : '';
                 statusBadge = `<span class="status-badge" style="background:#d1fae5; color:#059669; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Pagado${payDateText}</span>${methodInfo}`;
             } else {
                 statusBadge = '<span class="status-badge" style="background:#fee2e2; color:#dc2626; padding:0.25rem 0.5rem; border-radius:4px; font-size:0.8rem; font-weight:600;">Cancelado</span>';
@@ -2966,7 +2983,7 @@ function renderOrdersTable() {
                 </button>
             `;
             
-            const expectedDateFormatted = new Date(order.expected_date + 'T00:00:00').toLocaleDateString('es-AR');
+            const expectedDateFormatted = formatDisplayDate(order.expected_date);
             
             tr.innerHTML = `
                 <td>${expectedDateFormatted}</td>
@@ -3001,6 +3018,8 @@ async function handleSaveOrder(e) {
         await safeResponseJSON(response, 'Error al guardar el pedido');
         Alert.success('Pedido registrado correctamente');
         document.getElementById('order-form').reset();
+        const orExpectedDate = document.getElementById('or-expected-date');
+        if (orExpectedDate) orExpectedDate.value = new Date().toISOString().slice(0, 10);
         loadData();
     } catch (err) {
         Alert.error(err.message);

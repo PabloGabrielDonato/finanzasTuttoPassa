@@ -100,7 +100,8 @@ async function initDatabase() {
         multipleStatements: true,
         waitForConnections: true,
         connectionLimit: 10,
-        queueLimit: 0
+        queueLimit: 0,
+        dateStrings: true
       });
 
       await new Promise((resolve, reject) => {
