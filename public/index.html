@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=1.0.13">
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- jsPDF & AutoTable CDNs -->
@@ -59,12 +59,17 @@
         
         <!-- Sidebar (Panel Lateral) -->
         <aside class="sidebar" id="app-sidebar">
-            <div class="sidebar-header">
-                <span class="logo-icon">☕</span>
-                <div class="sidebar-title">
-                    <h3>Tutto Passa</h3>
-                    <span>Finanzas</span>
+            <div class="sidebar-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <span class="logo-icon">☕</span>
+                    <div class="sidebar-title">
+                        <h3>Tutto Passa</h3>
+                        <span>Finanzas</span>
+                    </div>
                 </div>
+                <button type="button" id="sidebar-collapse-btn" class="sidebar-collapse-btn" title="Ocultar barra lateral" aria-label="Ocultar barra lateral">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>
+                </button>
             </div>
             
             <nav class="sidebar-nav">
@@ -99,6 +104,10 @@
                 <button class="nav-item" data-view="credit-cards">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
                     Tarjetas
+                </button>
+                <button class="nav-item" data-view="pos">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                    Punto de Venta
                 </button>
                 <button class="nav-item" data-view="daily-register">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
@@ -1151,32 +1160,66 @@
                     <div class="flex-row" style="gap: 1.5rem; align-items: flex-start; flex-wrap: wrap;">
                         <div class="card-panel" style="flex: 1; min-width: 300px;">
                             <div class="panel-header">
-                                <h3>Nuevo Producto</h3>
-                                <span>Añadir al catálogo</span>
+                                <h3 id="inv-prod-form-title">Nuevo Producto</h3>
+                                <span id="inv-prod-form-subtitle">Añadir al catálogo</span>
                             </div>
                             <form id="product-form" class="custom-form">
+                                <input type="hidden" id="prod-id">
                                 <div class="form-group">
                                     <label>Código (opcional)</label>
                                     <input type="text" id="prod-code" placeholder="Ej: 100">
                                 </div>
                                 <div class="form-group">
-                                    <label>Artículo</label>
+                                    <label>Artículo *</label>
                                     <input type="text" id="prod-name" required placeholder="Ej: Medialuna Dulce">
                                 </div>
                                 <div class="form-group">
-                                    <label>Categoría</label>
-                                    <input type="text" id="prod-category" required placeholder="Ej: Masa Dulce">
+                                    <label>Categoría *</label>
+                                    <input type="text" id="prod-category" required placeholder="Ej: Facturería">
                                 </div>
-                                <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">Guardar Producto</button>
+                                <div class="form-row" style="display: flex; gap: 0.75rem;">
+                                    <div class="form-group" style="flex: 1;">
+                                        <label>Precio ($) *</label>
+                                        <input type="number" id="prod-price" step="0.01" min="0" required placeholder="0.00">
+                                    </div>
+                                    <div class="form-group" style="flex: 1;">
+                                        <label>Unidad</label>
+                                        <select id="prod-unit">
+                                            <option value="unidad" selected>Unidad</option>
+                                            <option value="docena">Docena</option>
+                                            <option value="1/2 docena">1/2 Docena</option>
+                                            <option value="250grs">250 grs</option>
+                                            <option value="kilo">Kilo</option>
+                                            <option value="porción">Porción</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                                    <button type="button" class="btn-secondary hide" id="btn-cancel-inv-edit-prod" style="flex: 1;">Cancelar</button>
+                                    <button type="submit" class="btn-primary" id="btn-save-inv-prod" style="flex: 1;">Guardar Producto</button>
+                                </div>
                             </form>
                         </div>
-                        <div class="card-panel" style="flex: 2; min-width: 400px;">
-                            <div class="panel-header">
-                                <h3>Catálogo Actual</h3>
+                        <div class="card-panel" style="flex: 2; min-width: 480px;">
+                            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div>
+                                    <h3>Catálogo Actual</h3>
+                                    <span>Listado de productos, precios y stock</span>
+                                </div>
+                                <input type="text" id="inv-catalog-search" placeholder="Buscar por nombre, cód. o cat..." style="padding: 0.4rem 0.75rem; border-radius: 6px; border: 1.5px solid var(--border-color); font-size: 0.85rem; width: 220px;">
                             </div>
                             <div class="table-responsive">
                                 <table class="data-table">
-                                    <thead><tr><th>Cód.</th><th>Artículo</th><th>Categoría</th><th>Stock Actual</th></tr></thead>
+                                    <thead>
+                                        <tr>
+                                            <th>Cód.</th>
+                                            <th>Artículo</th>
+                                            <th>Categoría</th>
+                                            <th>Precio</th>
+                                            <th>Stock</th>
+                                            <th style="text-align: center;">Acciones</th>
+                                        </tr>
+                                    </thead>
                                     <tbody id="products-tbody"></tbody>
                                 </table>
                             </div>
@@ -1273,7 +1316,175 @@
                 </div>
             </section>
 
+            <!-- ========================================== -->
+            <!-- VISTA: PUNTO DE VENTA (POS / TERMINAL COBROS) -->
+            <!-- ========================================== -->
+            <section id="view-pos" class="content-view hide">
+                <div class="pos-layout-wrapper">
+                    <!-- PANEL IZQUIERDO: COMANDA Y TICKET ACTUAL -->
+                    <div class="pos-card-panel pos-comanda-panel">
+                        <div class="pos-comanda-header">
+                            <div class="pos-comanda-title-box">
+                                <span class="pos-table-indicator" id="pos-table-indicator">Mostrador</span>
+                                <span class="pos-order-badge" id="pos-order-number-badge">Nueva Comanda</span>
+                            </div>
+                            <div class="pos-row-adders">
+                                <button type="button" class="btn-pos-add-row" id="btn-pos-add-row-1" title="Agregar 1 fila para escribir código o escanear">+1</button>
+                                <button type="button" class="btn-pos-add-row" id="btn-pos-add-row-5" title="Agregar 5 filas para agilizar">+5</button>
+                            </div>
+                        </div>
 
+                        <!-- TABLA DE COMANDA -->
+                        <div class="pos-comanda-table-container">
+                            <table class="pos-table" id="pos-comanda-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 75px;">Cód</th>
+                                        <th>Producto</th>
+                                        <th style="width: 65px; text-align: center;">Cant</th>
+                                        <th style="width: 55px; text-align: center;">Med.</th>
+                                        <th style="width: 85px; text-align: right;">Precio</th>
+                                        <th style="width: 90px; text-align: right;">Subtotal</th>
+                                        <th style="width: 34px; text-align: center;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pos-comanda-tbody">
+                                    <!-- Filas generadas dinámicamente -->
+                                </tbody>
+                            </table>
+                            <div id="pos-comanda-empty-msg" class="pos-empty-state">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4; margin-bottom: 0.5rem;"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                                <span>Comanda vacía</span>
+                                <small>Haz clic en un producto o pulsa <strong>+1</strong> para ingresar por código</small>
+                            </div>
+                        </div>
+
+                        <!-- TOTALES Y DESGLOSE IVA -->
+                        <div class="pos-comanda-footer">
+                            <div class="pos-vat-summary">
+                                <div class="pos-vat-row">
+                                    <span>Neto Gravado:</span>
+                                    <strong id="pos-summary-neto">$0,00</strong>
+                                </div>
+                                <div class="pos-vat-row">
+                                    <span>IVA 10,5%:</span>
+                                    <strong id="pos-summary-iva105">$0,00</strong>
+                                </div>
+                                <div class="pos-vat-row">
+                                    <span>IVA 21,0%:</span>
+                                    <strong id="pos-summary-iva21">$0,00</strong>
+                                </div>
+                            </div>
+                            <div class="pos-total-display">
+                                <span class="pos-total-label">TOTAL</span>
+                                <span class="pos-total-val" id="pos-summary-total">$0,00</span>
+                            </div>
+                        </div>
+
+                        <!-- BOTONES DE ACCIÓN DE COMANDA -->
+                        <div class="pos-comanda-btn-bar">
+                            <button type="button" class="btn-pos-clear" id="btn-pos-clear-comanda" title="Vaciar Comanda">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                Limpiar
+                            </button>
+                            <button type="button" class="btn-pos-checkout" id="btn-pos-checkout-trigger">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                                Cobrar (F9)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- PANEL CENTRAL: BUSCADOR, CATEGORÍAS Y PRODUCTOS -->
+                    <div class="pos-card-panel pos-catalog-panel">
+                        <!-- BUSCADOR SUPERIOR Y ACCIONES RÁPIDAS DE PRODUCTO -->
+                        <div class="pos-search-header">
+                            <div class="pos-search-box">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                <input type="text" id="pos-search-input" placeholder="Buscar por código, nombre o descripción (o presiona F2)..." autocomplete="off">
+                                <button type="button" id="pos-search-clear-btn" class="pos-search-clear hide">&times;</button>
+                            </div>
+                            <div class="pos-header-actions">
+                                <button type="button" class="btn-pos-add-fast" id="btn-pos-add-product-fast" title="Crear un nuevo producto">
+                                    <span>+</span> Nuevo Producto
+                                </button>
+                                <button type="button" class="btn-pos-manage-fast" id="btn-pos-manage-prods-fast" title="Ver listado, cambiar precios o quitar productos">
+                                    ⚙️ Gestionar Precios
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- TABS DE CATEGORÍAS CON CHIPS SCROLLEABLES -->
+                        <div class="pos-tabs-scroll-wrapper">
+                            <div class="pos-category-tabs" id="pos-category-tabs">
+                                <button type="button" class="pos-category-chip active" data-category="ACCESO RÁPIDO">⭐ Acceso Rápido</button>
+                                <button type="button" class="pos-category-chip" data-category="TODOS">Todos</button>
+                                <button type="button" class="pos-category-chip" data-category="Cafetería">☕ Cafetería</button>
+                                <button type="button" class="pos-category-chip" data-category="Facturería">🥐 Facturería</button>
+                                <button type="button" class="pos-category-chip" data-category="Panadería">🥖 Panadería</button>
+                                <button type="button" class="pos-category-chip" data-category="Pastelería">🍰 Pastelería</button>
+                                <button type="button" class="pos-category-chip" data-category="Salado">🥪 Salado</button>
+                                <button type="button" class="pos-category-chip" data-category="Promos">🏷️ Promos</button>
+                                <button type="button" class="pos-category-chip" data-category="Bebidas">🥤 Bebidas</button>
+                            </div>
+                        </div>
+
+                        <!-- GRILLA VISUAL DE PRODUCTOS -->
+                        <div class="pos-products-container">
+                            <!-- BARRA DE ORDENAMIENTO DE PRODUCTOS -->
+                            <div class="pos-catalog-sort-bar" id="pos-catalog-sort-bar">
+                                <div class="pos-sort-chips" id="pos-sort-chips">
+                                    <span class="pos-sort-label">Ordenar:</span>
+                                    <button type="button" class="pos-sort-chip active" data-sort="name-asc" title="Alfabéticamente de la A a la Z">🔤 Nombre (A-Z)</button>
+                                    <button type="button" class="pos-sort-chip" data-sort="name-desc" title="Alfabéticamente de la Z a la A">🔤 Nombre (Z-A)</button>
+                                    <button type="button" class="pos-sort-chip" data-sort="code-asc" title="Por Código de menor a mayor">🔢 Código (1-9)</button>
+                                    <button type="button" class="pos-sort-chip" data-sort="code-desc" title="Por Código de mayor a menor">🔢 Código (9-1)</button>
+                                </div>
+                                <span class="pos-products-count" id="pos-products-count"></span>
+                            </div>
+
+                            <div class="pos-products-grid" id="pos-products-grid">
+                                <!-- Cards generadas por JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PANEL DERECHO: BARRA DE HERRAMIENTAS FLOTANTE -->
+                    <div class="pos-toolbar-panel">
+                        <button type="button" class="pos-action-btn" id="btn-pos-quick-pay" title="Cobrar Venta (F9)">
+                            <div class="pos-action-icon">💵</div>
+                            <span>Cobrar</span>
+                        </button>
+                        <button type="button" class="pos-action-btn" id="btn-pos-test-ticket" title="Imprimir Ticket de Prueba o Reimprimir Último (F8)">
+                            <div class="pos-action-icon">🖨️</div>
+                            <span>Ticket</span>
+                        </button>
+                        <button type="button" class="pos-action-btn" id="btn-pos-quick-tables" title="Mesas de Salón">
+                            <div class="pos-action-icon">☕</div>
+                            <span>Mesas</span>
+                        </button>
+                        <button type="button" class="pos-action-btn" id="btn-pos-quick-products" title="Gestión de Productos">
+                            <div class="pos-action-icon">⚙️</div>
+                            <span>Productos</span>
+                        </button>
+                        <button type="button" class="pos-action-btn" id="btn-pos-quick-notes" title="Notas / Cliente">
+                            <div class="pos-action-icon">📝</div>
+                            <span>Notas</span>
+                        </button>
+                        <button type="button" class="pos-action-btn" id="btn-pos-quick-clear" title="Vaciar Comanda">
+                            <div class="pos-action-icon">🗑️</div>
+                            <span>Limpiar</span>
+                        </button>
+                        <button type="button" class="pos-action-btn" id="btn-pos-quick-fullscreen" title="Pantalla Completa">
+                            <div class="pos-action-icon">⛶</div>
+                            <span>Pantalla</span>
+                        </button>
+                        <button type="button" class="pos-action-btn" id="btn-pos-toggle-sidebar" title="Ocultar / Mostrar Barra Lateral">
+                            <div class="pos-action-icon">☰</div>
+                            <span>Menú</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
 
         </main>
     </div>
@@ -1707,7 +1918,312 @@
         </div>
     </div>
 
+    <!-- ========================================== -->
+    <!-- MODALES DEL SISTEMA PUNTO DE VENTA (POS)     -->
+    <!-- ========================================== -->
+
+    <!-- 1. MODAL DE COBRO (CHECKOUT) -->
+    <div id="modal-pos-checkout" class="modal-overlay hide">
+        <div class="modal-card pos-modal-card">
+            <div class="modal-header pos-modal-header">
+                <div>
+                    <h3 style="margin: 0;">Terminal de Cobro</h3>
+                    <small style="color: var(--text-muted);" id="checkout-order-info">Comanda #1 • Mostrador</small>
+                </div>
+                <button type="button" class="modal-close-btn" id="btn-pos-checkout-close">&times;</button>
+            </div>
+            <div class="pos-modal-body">
+                <!-- Gran Total a Pagar -->
+                <div class="pos-checkout-total-card">
+                    <span class="pos-checkout-total-subtitle">Total a Cobrar</span>
+                    <h1 class="pos-checkout-total-val" id="checkout-total-display">$0,00</h1>
+                </div>
+
+                <!-- Selector de Medio de Pago -->
+                <div class="pos-checkout-methods-group">
+                    <label class="pos-field-label">Medio de Pago</label>
+                    <div class="pos-method-pills">
+                        <button type="button" class="pos-method-pill active" data-method="Efectivo">Efectivo</button>
+                        <button type="button" class="pos-method-pill" data-method="Débito">Débito</button>
+                        <button type="button" class="pos-method-pill" data-method="Crédito">Crédito</button>
+                        <button type="button" class="pos-method-pill" data-method="Billetera Virtual">Mercado Pago</button>
+                        <button type="button" class="pos-method-pill" data-method="Pago Multi">Pago Dividido</button>
+                    </div>
+                </div>
+
+                <!-- Sección Efectivo / Vuelto -->
+                <div id="pos-cash-calculator" class="pos-cash-calculator-box">
+                    <div class="pos-cash-row">
+                        <div class="form-group" style="flex: 1; margin: 0;">
+                            <label for="pos-cash-received">Paga con ($)</label>
+                            <input type="number" id="pos-cash-received" step="0.01" min="0" placeholder="0.00" style="font-size: 1.25rem; font-weight: 700; color: var(--primary);">
+                        </div>
+                        <div class="pos-cash-change-display" style="flex: 1;">
+                            <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">Vuelto a Entregar</span>
+                            <div class="pos-cash-change-val" id="pos-cash-change-display">$0,00</div>
+                        </div>
+                    </div>
+                    <!-- Botones rápidos de billetes comunes -->
+                    <div class="pos-quick-cash-chips" id="pos-quick-cash-chips">
+                        <button type="button" class="pos-cash-chip" data-amt="exacto">Exacto</button>
+                        <button type="button" class="pos-cash-chip" data-amt="1000">$1.000</button>
+                        <button type="button" class="pos-cash-chip" data-amt="2000">$2.000</button>
+                        <button type="button" class="pos-cash-chip" data-amt="5000">$5.000</button>
+                        <button type="button" class="pos-cash-chip" data-amt="10000">$10.000</button>
+                        <button type="button" class="pos-cash-chip" data-amt="20000">$20.000</button>
+                    </div>
+                </div>
+
+                <!-- Sección Pago Multi (Oculta por defecto) -->
+                <div id="pos-multi-payment-box" class="pos-multi-box hide">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <span style="font-weight: 600; font-size: 0.9rem;">Desglose de Pagos Múltiples</span>
+                        <span style="font-size: 0.85rem;" id="pos-multi-remaining">Resta cubrir: $0,00</span>
+                    </div>
+                    <div id="pos-multi-rows-container">
+                        <!-- Filas de pago parcial generadas dinámicamente -->
+                    </div>
+                    <button type="button" class="btn-secondary btn-sm" id="btn-pos-add-multi-row" style="margin-top: 0.5rem;">+ Agregar Otro Medio de Pago</button>
+                </div>
+
+                <!-- Sección Cliente / Facturación Fiscal -->
+                <div class="pos-client-accordion">
+                    <div class="pos-client-accordion-header" id="pos-toggle-client-details">
+                        <span>👤 Datos de Facturación / Cliente (Opcional)</span>
+                        <span id="pos-client-arrow">▼</span>
+                    </div>
+                    <div class="pos-client-fields hide" id="pos-client-fields">
+                        <div class="form-row" style="display: flex; gap: 0.75rem; margin-top: 0.5rem;">
+                            <div class="form-group" style="flex: 1;">
+                                <label>Tipo Comprobante</label>
+                                <select id="pos-invoice-type">
+                                    <option value="11" selected>Factura C</option>
+                                    <option value="15">Ticket Factura C</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label>Tipo Documento</label>
+                                <select id="pos-client-doc-type">
+                                    <option value="99" selected>Consumidor Final</option>
+                                    <option value="80">CUIT</option>
+                                    <option value="96">DNI</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row" style="display: flex; gap: 0.75rem;">
+                            <div class="form-group" style="flex: 1;">
+                                <label>Nro. Documento / CUIT</label>
+                                <input type="text" id="pos-client-doc-number" placeholder="Ej: 20443621033">
+                            </div>
+                            <div class="form-group" style="flex: 1.5;">
+                                <label>Nombre / Razón Social</label>
+                                <input type="text" id="pos-client-name" placeholder="Consumidor Final">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de Acción de Cobro -->
+            <div class="modal-footer pos-checkout-footer">
+                <button type="button" class="btn-secondary" id="btn-pos-cancel-checkout">Cancelar</button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="button" class="btn-pos-ticket-comanda" id="btn-pos-submit-comanda" title="Imprimir Comanda Interna">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                        Comanda
+                    </button>
+                    <button type="button" class="btn-pos-ticket-fiscal" id="btn-pos-submit-factura" title="Emitir Factura con CAE y QR">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        Facturar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. MODAL DE MESAS DE SALÓN -->
+    <div id="modal-pos-tables" class="modal-overlay hide">
+        <div class="modal-card pos-modal-card" style="max-width: 720px;">
+            <div class="modal-header">
+                <h3>☕ Mesas de Salón</h3>
+                <button type="button" class="modal-close-btn" id="btn-pos-tables-close">&times;</button>
+            </div>
+            <div class="pos-modal-body">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="number" id="pos-new-table-num" placeholder="Nro Mesa" style="width: 100px;" min="1">
+                        <button type="button" class="btn-primary btn-sm" id="btn-pos-add-table">+ Agregar Mesa</button>
+                    </div>
+                    <button type="button" class="btn-secondary btn-sm" id="btn-pos-select-mostrador">👤 Pasar a Mostrador</button>
+                </div>
+                <div class="pos-tables-grid" id="pos-tables-grid">
+                    <!-- Mesas generadas dinámicamente -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="btn-pos-tables-cancel">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. MODAL DE GESTIÓN DE PRODUCTOS PERSONALIZADOS Y ACCESO RÁPIDO -->
+    <div id="modal-pos-custom-products" class="modal-overlay hide">
+        <div class="modal-card pos-modal-card" style="max-width: 850px;">
+            <div class="modal-header">
+                <h3>⚙️ Gestión de Productos y Acceso Rápido</h3>
+                <button type="button" class="modal-close-btn" id="btn-pos-custom-prod-close">&times;</button>
+            </div>
+            <div class="pos-modal-body">
+                <!-- TABS DE MODAL -->
+                <div class="pos-subtabs">
+                    <button type="button" class="pos-subtab active" id="tab-btn-prod-list">Catálogo de Productos</button>
+                    <button type="button" class="pos-subtab" id="tab-btn-prod-form">+ Nuevo Producto</button>
+                </div>
+
+                <!-- VISTA 1: LISTADO -->
+                <div id="pos-prod-list-view">
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+                        <input type="text" id="pos-custom-prod-filter" placeholder="Filtrar por código o nombre..." style="flex: 1;">
+                        <select id="pos-custom-prod-cat-filter" style="width: 180px;">
+                            <option value="">Todas las categorías</option>
+                        </select>
+                    </div>
+                    <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Cód</th>
+                                    <th>Nombre</th>
+                                    <th>Categoría</th>
+                                    <th>Precio</th>
+                                    <th>Stock POS</th>
+                                    <th>Rápido</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pos-custom-prod-tbody">
+                                <!-- Filas de productos cargadas dinámicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- VISTA 2: FORMULARIO CREAR / EDITAR -->
+                <div id="pos-prod-form-view" class="hide">
+                    <form id="pos-product-form">
+                        <input type="hidden" id="pos-pf-id">
+                        <div class="form-row" style="display: flex; gap: 0.75rem;">
+                            <div class="form-group" style="width: 100px;">
+                                <label for="pos-pf-code">Código</label>
+                                <input type="text" id="pos-pf-code" placeholder="Ej: 520">
+                            </div>
+                            <div class="form-group" style="flex: 2;">
+                                <label for="pos-pf-name">Nombre del Producto *</label>
+                                <input type="text" id="pos-pf-name" required placeholder="Ej: Sándwich Especial Tutto">
+                            </div>
+                            <div class="form-group" style="flex: 1.2;">
+                                <label for="pos-pf-category">Categoría *</label>
+                                <input type="text" id="pos-pf-category" list="pos-categories-datalist" required placeholder="Ej: Salado">
+                                <datalist id="pos-categories-datalist"></datalist>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="pos-pf-desc">Descripción (Opcional)</label>
+                            <input type="text" id="pos-pf-desc" placeholder="Detalle de ingredientes o formato">
+                        </div>
+
+                        <div class="form-row" style="display: flex; gap: 0.75rem;">
+                            <div class="form-group" style="flex: 1;">
+                                <label for="pos-pf-price">Precio Final ($) *</label>
+                                <input type="number" step="0.01" min="0" id="pos-pf-price" required placeholder="0.00">
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="pos-pf-unit">Unidad de Medida</label>
+                                <select id="pos-pf-unit">
+                                    <option value="unidad" selected>Unidad</option>
+                                    <option value="docena">Docena</option>
+                                    <option value="1/2 docena">1/2 Docena</option>
+                                    <option value="250grs">250 grs</option>
+                                    <option value="kilo">Kilo</option>
+                                    <option value="porción">Porción</option>
+                                    <option value="paquete">Paquete</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="pos-pf-iva">Alícuota IVA</label>
+                                <select id="pos-pf-iva">
+                                    <option value="10.5">10.5% (Pan/Harinas)</option>
+                                    <option value="21.0" selected>21.0% (General/Café)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- REGLA DE STOCK (GRUPO A vs GRUPO B) -->
+                        <div class="form-group" style="background: var(--bg-surface-elevated, #2a2a38); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color, #444);">
+                            <label style="font-weight: 600; display: block; margin-bottom: 0.4rem;">Regla de Descuento de Stock en Venta</label>
+                            <div style="display: flex; gap: 1.5rem;">
+                                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.9rem;">
+                                    <input type="radio" name="pos-pf-stock-rule" value="1" checked id="pos-pf-stock-auto">
+                                    <span><strong>Descuento Automático</strong> (Grupo B: Cafetería, Tortas, Postres, Salados, Pan de campo, Prepizza)</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.9rem;">
+                                    <input type="radio" name="pos-pf-stock-rule" value="0" id="pos-pf-stock-manual">
+                                    <span><strong>Stock Manual</strong> (Grupo A: Facturas, medialunas, bizcochos, baguettes, pastelitos, descongelados)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- ACCESO RÁPIDO -->
+                        <div class="form-row" style="display: flex; gap: 1rem; align-items: center; margin-top: 0.75rem;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 600;">
+                                <input type="checkbox" id="pos-pf-quick-access">
+                                ⭐ Mostrar en Acceso Rápido
+                            </label>
+                            <div class="form-group" style="width: 140px; margin: 0;">
+                                <label for="pos-pf-quick-order">Orden Acceso</label>
+                                <input type="number" id="pos-pf-quick-order" value="0" min="0">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.25rem;">
+                            <button type="button" class="btn-delete hide" id="btn-pos-delete-prod-from-form" title="Dar de baja este producto del catálogo">🗑️ Desactivar / Quitar Producto</button>
+                            <div style="display: flex; gap: 0.5rem; margin-left: auto;">
+                                <button type="button" class="btn-secondary" id="btn-pos-cancel-prod-form">Volver al Listado</button>
+                                <button type="submit" class="btn-primary" id="btn-pos-save-product">Guardar Producto</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. MODAL DE NOTAS Y OBSERVACIONES DE COMANDA -->
+    <div id="modal-pos-notes" class="modal-overlay hide">
+        <div class="modal-card pos-modal-card" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3>📝 Notas de la Comanda</h3>
+                <button type="button" class="modal-close-btn" id="btn-pos-notes-close">&times;</button>
+            </div>
+            <div class="pos-modal-body">
+                <div class="form-group">
+                    <label for="pos-order-notes-input">Observaciones / Pedido Especial</label>
+                    <textarea id="pos-order-notes-input" rows="4" placeholder="Ej: Sin cebolla, café bien caliente con leche tibia..." style="width: 100%; border-radius: 6px; padding: 0.5rem;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="pos-order-client-input">Nombre o Referencia de Cliente</label>
+                    <input type="text" id="pos-order-client-input" placeholder="Ej: Juan de la esquina">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="btn-pos-notes-cancel">Cancelar</button>
+                <button type="button" class="btn-primary" id="btn-pos-notes-save">Guardar Notas</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
-    <script src="js/app.js?v=1.0.7"></script>
+    <script src="js/app.js?v=1.0.14"></script>
 </body>
 </html>

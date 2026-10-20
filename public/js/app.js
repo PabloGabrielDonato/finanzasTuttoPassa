@@ -105,7 +105,22 @@ let state = {
     creditCards: [],
     dailyTransactions: [],
     orders: [],
-    inventoryProducts: []
+    inventoryProducts: [],
+    posProducts: [],
+    posCategories: [],
+    posTables: [],
+    posConfig: null,
+    posComanda: [],
+    posCurrentTableId: null,
+    posCurrentTableNum: null,
+    posSelectedCategory: 'ACCESO RÁPIDO',
+    posSearchTerm: '',
+    posCheckoutMethod: 'Efectivo',
+    posMultiPayments: [],
+    posOrderNotes: '',
+    posOrderClient: '',
+    posSortOrder: 'name-asc',
+    posLastReceipt: null
 };
 
 // --- INICIALIZACIÓN ---
@@ -163,9 +178,11 @@ function initEventListeners() {
         });
     });
 
-    const hamburgerBtn = document.getElementById('hamburger-menu-btn');
-    if (hamburgerBtn) {
-        hamburgerBtn.addEventListener('click', () => {
+    // Toggle de Barra Lateral (Mobile Drawer y Desktop Collapse)
+    const appContainer = document.getElementById('app-container');
+    const toggleSidebar = () => {
+        const isMobile = window.innerWidth <= 768;
+        if (isMobile) {
             if (sidebar) {
                 const isActive = sidebar.classList.toggle('active');
                 if (backdrop) {
@@ -176,7 +193,34 @@ function initEventListeners() {
                     }
                 }
             }
-        });
+        } else {
+            if (appContainer) {
+                const isCollapsed = appContainer.classList.toggle('sidebar-collapsed');
+                localStorage.setItem('tp_sidebar_collapsed', isCollapsed ? 'true' : 'false');
+            }
+        }
+    };
+
+    window.toggleAppSidebar = toggleSidebar;
+
+    const hamburgerBtn = document.getElementById('hamburger-menu-btn');
+    if (hamburgerBtn) {
+        hamburgerBtn.addEventListener('click', toggleSidebar);
+    }
+
+    const sidebarCollapseBtn = document.getElementById('sidebar-collapse-btn');
+    if (sidebarCollapseBtn) {
+        sidebarCollapseBtn.addEventListener('click', toggleSidebar);
+    }
+
+    const btnPosToggleSidebar = document.getElementById('btn-pos-toggle-sidebar');
+    if (btnPosToggleSidebar) {
+        btnPosToggleSidebar.addEventListener('click', toggleSidebar);
+    }
+
+    // Restaurar estado colapsado previo en Desktop
+    if (localStorage.getItem('tp_sidebar_collapsed') === 'true' && window.innerWidth > 768) {
+        if (appContainer) appContainer.classList.add('sidebar-collapsed');
     }
 
     if (backdrop) {
@@ -436,7 +480,8 @@ function switchView(viewName) {
         'daily-register': 'Caja Diaria',
         orders: 'Gestión de Pedidos a Proveedores',
         inventory: 'Control de Inventario y Producción',
-        'income-methods': 'Ingresos por Medio de Pago'
+        'income-methods': 'Ingresos por Medio de Pago',
+        pos: 'Punto de Venta - Terminal de Cobros'
     };
     document.getElementById('view-title').textContent = titles[viewName] || 'Tutto Passa';
 
@@ -463,6 +508,8 @@ function switchView(viewName) {
         loadInventoryData();
     } else if (viewName === 'income-methods') {
         loadIncomeMethodsData();
+    } else if (viewName === 'pos') {
+        loadPosData();
     }
 }
 
@@ -3097,6 +3144,16 @@ function initInventoryListeners() {
     // Form: Nuevo Producto
     const prodForm = document.getElementById('product-form');
     if (prodForm) prodForm.addEventListener('submit', handleSaveProduct);
+
+    const btnCancelEdit = document.getElementById('btn-cancel-inv-edit-prod');
+    if (btnCancelEdit) btnCancelEdit.addEventListener('click', cancelEditInventoryProduct);
+
+    const catalogSearch = document.getElementById('inv-catalog-search');
+    if (catalogSearch) {
+        catalogSearch.addEventListener('input', () => {
+            renderInventoryCatalog();
+        });
+    }
     
     // Form: Ingreso/Ajuste de Stock
     const stockForm = document.getElementById('stock-form');
@@ -3168,19 +3225,42 @@ function renderInventoryCatalog() {
     if (!tbody) return;
     tbody.innerHTML = '';
     
-    if (state.inventoryProducts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay productos en el catálogo</td></tr>';
+    let prods = state.inventoryProducts || [];
+    const searchInput = document.getElementById('inv-catalog-search');
+    const term = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+    if (term) {
+        prods = prods.filter(p => 
+            (p.name && p.name.toLowerCase().includes(term)) ||
+            (p.code && p.code.toLowerCase().includes(term)) ||
+            (p.category && p.category.toLowerCase().includes(term))
+        );
+    }
+
+    if (prods.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted" style="padding: 1.5rem;">No se encontraron productos en el catálogo</td></tr>';
         return;
     }
     
-    state.inventoryProducts.forEach(p => {
+    prods.forEach(p => {
         const tr = document.createElement('tr');
-        const stockStr = parseFloat(p.current_stock).toLocaleString('es-AR', {minimumFractionDigits: 0});
+        const stockStr = parseFloat(p.current_stock || 0).toLocaleString('es-AR', {minimumFractionDigits: 0});
+        const priceNum = parseFloat(p.price || 0);
+        const priceStr = priceNum > 0 
+            ? `$${priceNum.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+            : '$0,00';
+
         tr.innerHTML = `
-            <td>${p.code || '-'}</td>
-            <td style="font-weight:500;">${p.name}</td>
+            <td><strong>${p.code || '—'}</strong></td>
+            <td style="font-weight:600;">${p.name}</td>
             <td><span class="status-badge" style="background:#e0f2fe; color:#0284c7; font-size:0.75rem;">${p.category}</span></td>
+            <td style="font-weight:700; color:#0f172a;">${priceStr} <small style="color:var(--text-muted); font-weight:normal;">/${p.unit_measure || 'un.'}</small></td>
             <td style="font-weight:bold; ${p.current_stock < 0 ? 'color:#dc2626;' : (p.current_stock == 0 ? 'color:#9ca3af;' : 'color:#059669;')}">${stockStr}</td>
+            <td style="text-align: center;">
+                <button type="button" class="btn-icon" onclick="editInventoryProduct(${p.id})" title="Editar Producto y Precio" style="font-size: 0.9rem; padding: 4px 8px; border: 1.5px solid var(--border-color); border-radius: 6px; cursor: pointer; background: var(--bg-surface-elevated, #ffffff);">
+                    ✏️ Editar
+                </button>
+            </td>
         `;
         tbody.appendChild(tr);
     });
@@ -3270,26 +3350,86 @@ function renderInventoryBakingTable() {
     });
 }
 
+function editInventoryProduct(prodId) {
+    const p = (state.inventoryProducts || []).find(x => x.id === prodId);
+    if (!p) return;
+
+    document.getElementById('prod-id').value = p.id;
+    document.getElementById('prod-code').value = p.code || '';
+    document.getElementById('prod-name').value = p.name || '';
+    document.getElementById('prod-category').value = p.category || '';
+    document.getElementById('prod-price').value = p.price !== undefined ? p.price : 0;
+    
+    const unitSelect = document.getElementById('prod-unit');
+    if (unitSelect) unitSelect.value = p.unit_measure || 'unidad';
+
+    const formTitle = document.getElementById('inv-prod-form-title');
+    const formSubtitle = document.getElementById('inv-prod-form-subtitle');
+    const btnCancel = document.getElementById('btn-cancel-inv-edit-prod');
+    const btnSave = document.getElementById('btn-save-inv-prod');
+
+    if (formTitle) formTitle.textContent = 'Editar Producto';
+    if (formSubtitle) formSubtitle.textContent = `Modificando: ${p.name}`;
+    if (btnCancel) btnCancel.classList.remove('hide');
+    if (btnSave) btnSave.textContent = 'Actualizar Producto';
+
+    // Hacer scroll hacia el formulario y enfocar el precio
+    const formCard = document.getElementById('product-form');
+    if (formCard) formCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const priceInput = document.getElementById('prod-price');
+    if (priceInput) {
+        priceInput.focus();
+        priceInput.select();
+    }
+}
+
+function cancelEditInventoryProduct() {
+    const form = document.getElementById('product-form');
+    if (form) form.reset();
+    document.getElementById('prod-id').value = '';
+
+    const formTitle = document.getElementById('inv-prod-form-title');
+    const formSubtitle = document.getElementById('inv-prod-form-subtitle');
+    const btnCancel = document.getElementById('btn-cancel-inv-edit-prod');
+    const btnSave = document.getElementById('btn-save-inv-prod');
+
+    if (formTitle) formTitle.textContent = 'Nuevo Producto';
+    if (formSubtitle) formSubtitle.textContent = 'Añadir al catálogo';
+    if (btnCancel) btnCancel.classList.add('hide');
+    if (btnSave) btnSave.textContent = 'Guardar Producto';
+}
+
 async function handleSaveProduct(e) {
     e.preventDefault();
-    const code = document.getElementById('prod-code').value;
-    const name = document.getElementById('prod-name').value;
-    const category = document.getElementById('prod-category').value;
+    const id = document.getElementById('prod-id').value;
+    const code = document.getElementById('prod-code').value.trim();
+    const name = document.getElementById('prod-name').value.trim();
+    const category = document.getElementById('prod-category').value.trim();
+    const price = parseFloat(document.getElementById('prod-price').value) || 0;
+    const unit_measure = document.getElementById('prod-unit')?.value || 'unidad';
     
+    const payload = { code, name, category, price, unit_measure };
+
     try {
-        const response = await fetch(`${API_URL}/api/inventory/products`, {
-            method: 'POST',
+        const url = id ? `${API_URL}/api/inventory/products/${id}` : `${API_URL}/api/inventory/products`;
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+            method,
             headers: {
                 'Authorization': `Bearer ${state.token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ code, name, category })
+            body: JSON.stringify(payload)
         });
         
-        await safeResponseJSON(response, 'Error al guardar el producto');
-        Alert.success('Producto añadido al catálogo');
-        document.getElementById('product-form').reset();
-        loadInventoryData();
+        await safeResponseJSON(response, id ? 'Error al actualizar el producto' : 'Error al guardar el producto');
+        Alert.success(id ? 'Producto y precio actualizados con éxito' : 'Producto añadido al catálogo');
+        cancelEditInventoryProduct();
+        await loadInventoryData();
+        if (typeof loadPosData === 'function') {
+            loadPosData();
+        }
     } catch (err) {
         Alert.error(err.message);
     }
@@ -3592,5 +3732,1586 @@ window.openPayOrderModal = openPayOrderModal;
 window.closePayOrderModal = closePayOrderModal;
 window.handleUpdateOrderStatus = handleUpdateOrderStatus;
 window.handleDeleteOrder = handleDeleteOrder;
+
+// ==========================================================================
+// MÓDULO PUNTO DE VENTA (POS / TERMINAL DE COBROS DULCE HORA)
+// ==========================================================================
+
+async function loadPosData() {
+    try {
+        const [configRes, catRes, prodRes, tablesRes] = await Promise.all([
+            fetch(`${API_URL}/api/pos/config`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+            fetch(`${API_URL}/api/pos/categories`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+            fetch(`${API_URL}/api/pos/products`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+            fetch(`${API_URL}/api/pos/tables`, { headers: { 'Authorization': `Bearer ${state.token}` } })
+        ]);
+
+        if (configRes.ok) state.posConfig = await configRes.json();
+        if (catRes.ok) state.posCategories = await catRes.json();
+        if (prodRes.ok) state.posProducts = await prodRes.json();
+        if (tablesRes.ok) state.posTables = await tablesRes.json();
+
+        initPosEventListeners();
+        renderPosCategoryTabs();
+        renderPosCatalog();
+        renderPosComanda();
+        updatePosTableIndicator();
+
+    } catch (err) {
+        console.error('Error al cargar datos del POS:', err);
+        Alert.error('Error al cargar datos del Punto de Venta.');
+    }
+}
+
+let posListenersInitialized = false;
+function initPosEventListeners() {
+    if (posListenersInitialized) return;
+    posListenersInitialized = true;
+
+    // 1. Botones de agregar filas vacías (+1 y +5)
+    const btnAdd1 = document.getElementById('btn-pos-add-row-1');
+    const btnAdd5 = document.getElementById('btn-pos-add-row-5');
+    if (btnAdd1) btnAdd1.addEventListener('click', () => addEmptyPosComandaRows(1));
+    if (btnAdd5) btnAdd5.addEventListener('click', () => addEmptyPosComandaRows(5));
+
+    // 2. Botón limpiar comanda
+    const btnClear = document.getElementById('btn-pos-clear-comanda');
+    const btnQuickClear = document.getElementById('btn-pos-quick-clear');
+    if (btnClear) btnClear.addEventListener('click', clearPosComanda);
+    if (btnQuickClear) btnQuickClear.addEventListener('click', clearPosComanda);
+
+    // 3. Botón cobrar comanda
+    const btnCheckout = document.getElementById('btn-pos-checkout-trigger');
+    const btnQuickPay = document.getElementById('btn-pos-quick-pay');
+    if (btnCheckout) btnCheckout.addEventListener('click', openPosCheckoutModal);
+    if (btnQuickPay) btnQuickPay.addEventListener('click', openPosCheckoutModal);
+
+    // 4. Buscador de productos
+    const searchInput = document.getElementById('pos-search-input');
+    const searchClearBtn = document.getElementById('pos-search-clear-btn');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            state.posSearchTerm = e.target.value.toLowerCase().trim();
+            if (searchClearBtn) {
+                if (state.posSearchTerm) searchClearBtn.classList.remove('hide');
+                else searchClearBtn.classList.add('hide');
+            }
+            renderPosCatalog();
+        });
+    }
+    if (searchClearBtn) {
+        searchClearBtn.addEventListener('click', () => {
+            if (searchInput) searchInput.value = '';
+            state.posSearchTerm = '';
+            searchClearBtn.classList.add('hide');
+            renderPosCatalog();
+            if (searchInput) searchInput.focus();
+        });
+    }
+
+    // 4b. Chips de Ordenamiento en Catálogo POS (Nombre A-Z / Z-A, Código 1-9 / 9-1)
+    const sortChipsContainer = document.getElementById('pos-sort-chips');
+    if (sortChipsContainer) {
+        sortChipsContainer.querySelectorAll('.pos-sort-chip').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                const sortMode = e.currentTarget.getAttribute('data-sort');
+                if (sortMode) {
+                    state.posSortOrder = sortMode;
+                    sortChipsContainer.querySelectorAll('.pos-sort-chip').forEach(c => c.classList.remove('active'));
+                    e.currentTarget.classList.add('active');
+                    renderPosCatalog();
+                }
+            });
+        });
+    }
+
+    // 5. Botones de barra lateral rápida
+    const btnTestTicket = document.getElementById('btn-pos-test-ticket');
+    if (btnTestTicket) btnTestTicket.addEventListener('click', handlePosTestOrReprintTicket);
+
+    const btnTables = document.getElementById('btn-pos-quick-tables');
+    if (btnTables) btnTables.addEventListener('click', openPosTablesModal);
+
+    const btnCustomProds = document.getElementById('btn-pos-quick-products');
+    if (btnCustomProds) btnCustomProds.addEventListener('click', openPosCustomProductsModal);
+
+    const btnAddFast = document.getElementById('btn-pos-add-product-fast');
+    if (btnAddFast) btnAddFast.addEventListener('click', openPosNewProductModal);
+
+    const btnManageFast = document.getElementById('btn-pos-manage-prods-fast');
+    if (btnManageFast) btnManageFast.addEventListener('click', openPosCustomProductsModal);
+
+    const btnNotes = document.getElementById('btn-pos-quick-notes');
+    if (btnNotes) btnNotes.addEventListener('click', openPosNotesModal);
+
+    const btnFullscreen = document.getElementById('btn-pos-quick-fullscreen');
+    if (btnFullscreen) {
+        btnFullscreen.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        });
+    }
+
+    const btnPosToggleSidebar = document.getElementById('btn-pos-toggle-sidebar');
+    if (btnPosToggleSidebar) {
+        btnPosToggleSidebar.addEventListener('click', () => {
+            if (typeof window.toggleAppSidebar === 'function') {
+                window.toggleAppSidebar();
+            }
+        });
+    }
+
+    // 6. Checkout Modal Listeners
+    initCheckoutModalEvents();
+
+    // 7. Modales de Mesas, Productos y Notas
+    initTablesModalEvents();
+    initCustomProductsModalEvents();
+    initNotesModalEvents();
+
+    // 8. Atajos de Teclado Globales para POS
+    document.addEventListener('keydown', (e) => {
+        if (state.currentView !== 'pos') return;
+
+        // F2: Foco en buscador
+        if (e.key === 'F2') {
+            e.preventDefault();
+            const s = document.getElementById('pos-search-input');
+            if (s) s.focus();
+        }
+        // F8: Reimprimir o Probar Ticket
+        if (e.key === 'F8') {
+            e.preventDefault();
+            handlePosTestOrReprintTicket();
+        }
+        // F9: Abrir Cobro
+        if (e.key === 'F9') {
+            e.preventDefault();
+            openPosCheckoutModal();
+        }
+    });
+}
+
+// --- RENDERIZADO DE TABS Y CATÁLOGO ---
+
+function renderPosCategoryTabs() {
+    const tabsContainer = document.getElementById('pos-category-tabs');
+    if (!tabsContainer) return;
+
+    // Tabs base
+    let html = `
+        <button type="button" class="pos-category-chip ${state.posSelectedCategory === 'ACCESO RÁPIDO' ? 'active' : ''}" data-category="ACCESO RÁPIDO">⭐ Acceso Rápido</button>
+        <button type="button" class="pos-category-chip ${state.posSelectedCategory === 'TODOS' ? 'active' : ''}" data-category="TODOS">Todos</button>
+    `;
+
+    // Categorías dinámicas desde DB
+    if (state.posCategories && state.posCategories.length > 0) {
+        state.posCategories.forEach(c => {
+            const catName = c.category;
+            const isActive = state.posSelectedCategory === catName;
+            let icon = '📦';
+            if (catName.includes('Café') || catName.includes('Cafetería')) icon = '☕';
+            else if (catName.includes('Factur')) icon = '🥐';
+            else if (catName.includes('Panad')) icon = '🥖';
+            else if (catName.includes('Pastel')) icon = '🍰';
+            else if (catName.includes('Salad')) icon = '🥪';
+            else if (catName.includes('Promo')) icon = '🏷️';
+
+            html += `<button type="button" class="pos-category-chip ${isActive ? 'active' : ''}" data-category="${catName}">${icon} ${catName}</button>`;
+        });
+    }
+
+    tabsContainer.innerHTML = html;
+
+    tabsContainer.querySelectorAll('.pos-category-chip').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const cat = e.currentTarget.getAttribute('data-category');
+            state.posSelectedCategory = cat;
+            tabsContainer.querySelectorAll('.pos-category-chip').forEach(b => b.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+            renderPosCatalog();
+        });
+    });
+}
+
+function renderPosCatalog() {
+    const grid = document.getElementById('pos-products-grid');
+    if (!grid) return;
+
+    let filtered = state.posProducts || [];
+
+    // Filtro por categoría
+    if (state.posSelectedCategory === 'ACCESO RÁPIDO') {
+        filtered = filtered.filter(p => p.is_quick_access === 1);
+    } else if (state.posSelectedCategory !== 'TODOS') {
+        filtered = filtered.filter(p => p.category === state.posSelectedCategory);
+    }
+
+    // Filtro por texto de búsqueda
+    if (state.posSearchTerm) {
+        filtered = filtered.filter(p => {
+            const codeMatch = p.code && p.code.toLowerCase().includes(state.posSearchTerm);
+            const nameMatch = p.name && p.name.toLowerCase().includes(state.posSearchTerm);
+            const descMatch = p.description && p.description.toLowerCase().includes(state.posSearchTerm);
+            return codeMatch || nameMatch || descMatch;
+        });
+    }
+
+    // Ordenamiento dinámico (alfabético o por código)
+    const sortMode = state.posSortOrder || 'name-asc';
+    filtered.sort((a, b) => {
+        if (sortMode === 'name-asc') {
+            return (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' });
+        } else if (sortMode === 'name-desc') {
+            return (b.name || '').localeCompare(a.name || '', 'es', { sensitivity: 'base' });
+        } else if (sortMode === 'code-asc') {
+            const numA = parseInt(a.code, 10);
+            const numB = parseInt(b.code, 10);
+            if (!isNaN(numA) && !isNaN(numB)) {
+                return numA - numB;
+            }
+            return (a.code || '').localeCompare(b.code || '', undefined, { numeric: true });
+        } else if (sortMode === 'code-desc') {
+            const numA = parseInt(a.code, 10);
+            const numB = parseInt(b.code, 10);
+            if (!isNaN(numA) && !isNaN(numB)) {
+                return numB - numA;
+            }
+            return (b.code || '').localeCompare(a.code || '', undefined, { numeric: true });
+        }
+        return 0;
+    });
+
+    // Mantener sincronizado el estado visual de los chips de orden
+    const sortChipsContainer = document.getElementById('pos-sort-chips');
+    if (sortChipsContainer) {
+        sortChipsContainer.querySelectorAll('.pos-sort-chip').forEach(c => {
+            if (c.getAttribute('data-sort') === sortMode) {
+                c.classList.add('active');
+            } else {
+                c.classList.remove('active');
+            }
+        });
+    }
+
+    // Actualizar indicador de cantidad de productos
+    const countBadge = document.getElementById('pos-products-count');
+    if (countBadge) {
+        countBadge.textContent = `${filtered.length} producto${filtered.length === 1 ? '' : 's'}`;
+    }
+
+    if (filtered.length === 0) {
+        grid.innerHTML = `
+            <div style="grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+                <p style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">No se encontraron productos</p>
+                <small>Prueba buscando con otro término o seleccionando otra categoría.</small>
+            </div>
+        `;
+        return;
+    }
+
+    let cardsHtml = '';
+    filtered.forEach(p => {
+        const priceFmt = parseFloat(p.price || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 });
+        const isQuick = p.is_quick_access === 1;
+
+        cardsHtml += `
+            <div class="pos-product-card" onclick="addPosProductToComanda(${p.id})">
+                <div class="pos-prod-card-top">
+                    <span class="pos-prod-code-badge">${p.code ? '#' + p.code : 'ID:' + p.id}</span>
+                    <div class="pos-prod-card-actions">
+                        <button type="button" class="pos-prod-star-btn ${isQuick ? 'is-fav' : ''}" 
+                                onclick="event.stopPropagation(); toggleQuickAccessProduct(${p.id}, ${isQuick ? 0 : 1})" 
+                                title="${isQuick ? 'Quitar de Favoritos (Acceso Rápido)' : 'Marcar como Favorito (Acceso Rápido)'}">
+                            ${isQuick ? '★' : '☆'}
+                        </button>
+                        <button type="button" class="pos-prod-edit-btn" 
+                                onclick="event.stopPropagation(); quickEditPosProduct(${p.id})" 
+                                title="Cambiar precio o editar producto">
+                            ✏️
+                        </button>
+                    </div>
+                </div>
+                <div class="pos-prod-name" title="${p.name}">${p.name}</div>
+                <div class="pos-prod-card-bottom">
+                    <span class="pos-prod-price">${priceFmt}</span>
+                    <span class="pos-prod-unit">${p.unit_measure || 'un.'}</span>
+                </div>
+            </div>
+        `;
+    });
+
+    grid.innerHTML = cardsHtml;
+}
+
+// --- GESTIÓN DE FILAS Y COMANDA ---
+
+function addPosProductToComanda(productId, qtyToAdd = 1) {
+    const prod = state.posProducts.find(p => p.id === productId);
+    if (!prod) return;
+
+    // Si ya existe en la comanda con el mismo product_id, incrementar cantidad
+    const existing = state.posComanda.find(item => item.product_id === productId);
+    if (existing) {
+        existing.quantity = parseFloat((existing.quantity + qtyToAdd).toFixed(2));
+        existing.subtotal = parseFloat((existing.quantity * existing.unit_price).toFixed(2));
+    } else {
+        // Si hay una fila vacía creada por +1 o +5 sin usar, reutilizarla
+        const emptyRow = state.posComanda.find(item => item.is_empty_row && !item.product_id);
+        if (emptyRow) {
+            emptyRow.is_empty_row = false;
+            emptyRow.product_id = prod.id;
+            emptyRow.code = prod.code || '';
+            emptyRow.description = prod.name;
+            emptyRow.unit_measure = prod.unit_measure || 'unidad';
+            emptyRow.unit_price = parseFloat(prod.price) || 0;
+            emptyRow.iva_rate = parseFloat(prod.iva_rate) || 10.5;
+            emptyRow.auto_deduct_stock = prod.auto_deduct_stock;
+            emptyRow.subtotal = parseFloat((emptyRow.quantity * emptyRow.unit_price).toFixed(2));
+        } else {
+            state.posComanda.push({
+                temp_id: 'item_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+                product_id: prod.id,
+                code: prod.code || '',
+                description: prod.name,
+                quantity: qtyToAdd,
+                unit_measure: prod.unit_measure || 'unidad',
+                unit_price: parseFloat(prod.price) || 0,
+                iva_rate: parseFloat(prod.iva_rate) || 10.5,
+                auto_deduct_stock: prod.auto_deduct_stock,
+                subtotal: parseFloat((qtyToAdd * (parseFloat(prod.price) || 0)).toFixed(2))
+            });
+        }
+    }
+
+    renderPosComanda();
+}
+
+function addEmptyPosComandaRows(count = 1) {
+    // El usuario especificó: "+1 y +5 son para agregar filas al supuesto carrito, no para aumentar cantidades de producto."
+    let firstAddedId = null;
+    for (let i = 0; i < count; i++) {
+        const id = 'empty_' + Date.now() + '_' + i + '_' + Math.floor(Math.random() * 100);
+        if (i === 0) firstAddedId = id;
+
+        state.posComanda.push({
+            temp_id: id,
+            product_id: null,
+            code: '',
+            description: '',
+            quantity: 1,
+            unit_measure: 'unidad',
+            unit_price: 0,
+            iva_rate: 10.5,
+            auto_deduct_stock: 1,
+            subtotal: 0,
+            is_empty_row: true
+        });
+    }
+
+    renderPosComanda();
+
+    // Enfocar el input de código de la primera fila agregada
+    if (firstAddedId) {
+        setTimeout(() => {
+            const input = document.getElementById(`pos-code-input-${firstAddedId}`);
+            if (input) input.focus();
+        }, 50);
+    }
+}
+
+function handlePosCodeLookup(tempId, codeVal) {
+    const cleanCode = (codeVal || '').trim();
+    if (!cleanCode) return;
+
+    const row = state.posComanda.find(i => i.temp_id === tempId);
+    if (!row) return;
+
+    // Buscar producto por código exacto o case-insensitive
+    const prod = state.posProducts.find(p => p.code && String(p.code).trim().toLowerCase() === cleanCode.toLowerCase());
+    if (prod) {
+        row.is_empty_row = false;
+        row.product_id = prod.id;
+        row.code = prod.code;
+        row.description = prod.name;
+        row.unit_measure = prod.unit_measure || 'unidad';
+        row.unit_price = parseFloat(prod.price) || 0;
+        row.iva_rate = parseFloat(prod.iva_rate) || 10.5;
+        row.auto_deduct_stock = prod.auto_deduct_stock;
+        row.subtotal = parseFloat((row.quantity * row.unit_price).toFixed(2));
+
+        renderPosComanda();
+
+        // Mover foco a la cantidad de esta fila
+        setTimeout(() => {
+            const qtyInput = document.getElementById(`pos-qty-input-${tempId}`);
+            if (qtyInput) {
+                qtyInput.focus();
+                qtyInput.select();
+            }
+        }, 50);
+    } else {
+        Alert.warning(`Producto con código "${cleanCode}" no encontrado.`);
+    }
+}
+
+function updatePosRowQty(tempId, newQty) {
+    const row = state.posComanda.find(i => i.temp_id === tempId);
+    if (!row) return;
+
+    const qty = parseFloat(newQty);
+    if (isNaN(qty) || qty <= 0) {
+        row.quantity = 1;
+    } else {
+        row.quantity = qty;
+    }
+    row.subtotal = parseFloat((row.quantity * row.unit_price).toFixed(2));
+    renderPosComanda();
+}
+
+function updatePosRowPrice(tempId, newPrice) {
+    const row = state.posComanda.find(i => i.temp_id === tempId);
+    if (!row) return;
+
+    const price = parseFloat(newPrice);
+    row.unit_price = isNaN(price) || price < 0 ? 0 : price;
+    row.subtotal = parseFloat((row.quantity * row.unit_price).toFixed(2));
+    renderPosComanda();
+}
+
+function removePosRow(tempId) {
+    state.posComanda = state.posComanda.filter(i => i.temp_id !== tempId);
+    renderPosComanda();
+}
+
+async function clearPosComanda() {
+    if (state.posComanda.length === 0) return;
+    const confirmed = await Alert.confirm('¿Deseas vaciar todos los productos de la comanda actual?', 'Limpiar Comanda', 'Sí, vaciar', 'Cancelar');
+    if (confirmed) {
+        state.posComanda = [];
+        state.posOrderNotes = '';
+        renderPosComanda();
+    }
+}
+
+function renderPosComanda() {
+    const tbody = document.getElementById('pos-comanda-tbody');
+    const emptyMsg = document.getElementById('pos-comanda-empty-msg');
+    if (!tbody) return;
+
+    if (state.posComanda.length === 0) {
+        tbody.innerHTML = '';
+        if (emptyMsg) emptyMsg.classList.remove('hide');
+        updatePosComandaTotals(0, 0, 0, 0);
+        return;
+    }
+
+    if (emptyMsg) emptyMsg.classList.add('hide');
+
+    let rowsHtml = '';
+    let totalNeto = 0;
+    let totalIva105 = 0;
+    let totalIva21 = 0;
+    let grandTotal = 0;
+
+    state.posComanda.forEach(item => {
+        grandTotal += item.subtotal;
+        const ivaRate = item.iva_rate || 10.5;
+        const baseNeto = item.subtotal / (1 + (ivaRate / 100));
+        const ivaAmt = item.subtotal - baseNeto;
+
+        totalNeto += baseNeto;
+        if (Math.abs(ivaRate - 10.5) < 0.1) {
+            totalIva105 += ivaAmt;
+        } else {
+            totalIva21 += ivaAmt;
+        }
+
+        const subtotalFmt = item.subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        rowsHtml += `
+            <tr id="pos-row-${item.temp_id}">
+                <td>
+                    <input type="text" id="pos-code-input-${item.temp_id}" class="pos-row-input-code" value="${item.code || ''}" placeholder="Cód..." onchange="handlePosCodeLookup('${item.temp_id}', this.value)" onkeydown="if(event.key==='Enter'){handlePosCodeLookup('${item.temp_id}', this.value); event.preventDefault();}">
+                </td>
+                <td style="font-weight: 600; color: var(--text-color, #fff);">
+                    ${item.description ? item.description : '<span style="color:var(--text-muted); font-style:italic;">Ingresar código...</span>'}
+                </td>
+                <td>
+                    <input type="number" step="0.01" min="0.01" id="pos-qty-input-${item.temp_id}" class="pos-row-input-qty" value="${item.quantity}" onchange="updatePosRowQty('${item.temp_id}', this.value)" style="text-align: center;">
+                </td>
+                <td style="text-align: center; font-size: 0.75rem; color: var(--text-muted);">
+                    ${item.unit_measure || 'un.'}
+                </td>
+                <td>
+                    <input type="number" step="0.01" min="0" class="pos-row-input-price" value="${item.unit_price}" onchange="updatePosRowPrice('${item.temp_id}', this.value)" style="text-align: right;">
+                </td>
+                <td style="text-align: right; font-weight: 700; color: #10b981;">
+                    $${subtotalFmt}
+                </td>
+                <td style="text-align: center;">
+                    <button type="button" class="pos-row-del-btn" onclick="removePosRow('${item.temp_id}')" title="Eliminar fila">&times;</button>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = rowsHtml;
+    updatePosComandaTotals(totalNeto, totalIva105, totalIva21, grandTotal);
+}
+
+function updatePosComandaTotals(neto, iva105, iva21, total) {
+    const elNeto = document.getElementById('pos-summary-neto');
+    const elIva105 = document.getElementById('pos-summary-iva105');
+    const elIva21 = document.getElementById('pos-summary-iva21');
+    const elTotal = document.getElementById('pos-summary-total');
+
+    if (elNeto) elNeto.textContent = `$${neto.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (elIva105) elIva105.textContent = `$${iva105.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (elIva21) elIva21.textContent = `$${iva21.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (elTotal) elTotal.textContent = `$${total.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function updatePosTableIndicator() {
+    const indicator = document.getElementById('pos-table-indicator');
+    const orderBadge = document.getElementById('pos-order-number-badge');
+    if (!indicator) return;
+
+    if (state.posCurrentTableId) {
+        indicator.textContent = `Mesa ${state.posCurrentTableNum || state.posCurrentTableId}`;
+        indicator.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+        if (orderBadge) orderBadge.textContent = 'Salón';
+    } else {
+        indicator.textContent = 'Mostrador';
+        indicator.style.background = 'linear-gradient(135deg, #6366f1, #4f46e5)';
+        if (orderBadge) orderBadge.textContent = 'Nueva Comanda';
+    }
+}
+
+// --- MODAL DE COBRO (CHECKOUT) ---
+
+function initCheckoutModalEvents() {
+    const modal = document.getElementById('modal-pos-checkout');
+    const btnClose = document.getElementById('btn-pos-checkout-close');
+    const btnCancel = document.getElementById('btn-pos-cancel-checkout');
+    const btnComanda = document.getElementById('btn-pos-submit-comanda');
+    const btnFactura = document.getElementById('btn-pos-submit-factura');
+    const cashInput = document.getElementById('pos-cash-received');
+
+    if (btnClose) btnClose.addEventListener('click', closePosCheckoutModal);
+    if (btnCancel) btnCancel.addEventListener('click', closePosCheckoutModal);
+
+    // Cambio reactivo al escribir en efectivo
+    if (cashInput) {
+        cashInput.addEventListener('input', updatePosChangeCalculation);
+    }
+
+    // Botones rápidos de billetes comunes
+    const chipsContainer = document.getElementById('pos-quick-cash-chips');
+    if (chipsContainer) {
+        chipsContainer.querySelectorAll('.pos-cash-chip').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const amt = e.currentTarget.getAttribute('data-amt');
+                const total = getPosComandaTotal();
+                if (amt === 'exacto') {
+                    if (cashInput) cashInput.value = total.toFixed(2);
+                } else {
+                    if (cashInput) cashInput.value = parseFloat(amt).toFixed(2);
+                }
+                updatePosChangeCalculation();
+            });
+        });
+    }
+
+    // Selector de Medios de Pago
+    document.querySelectorAll('.pos-method-pill').forEach(pill => {
+        pill.addEventListener('click', (e) => {
+            document.querySelectorAll('.pos-method-pill').forEach(p => p.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+            const method = e.currentTarget.getAttribute('data-method');
+            state.posCheckoutMethod = method;
+
+            const cashBox = document.getElementById('pos-cash-calculator');
+            const multiBox = document.getElementById('pos-multi-payment-box');
+
+            if (method === 'Pago Multi') {
+                if (multiBox) multiBox.classList.remove('hide');
+                if (cashBox) cashBox.classList.add('hide');
+                initMultiPaymentRows();
+            } else {
+                if (multiBox) multiBox.classList.add('hide');
+                if (cashBox) {
+                    if (method === 'Efectivo') cashBox.classList.remove('hide');
+                    else cashBox.classList.add('hide');
+                }
+            }
+        });
+    });
+
+    // Acordeón de datos del cliente
+    const clientHeader = document.getElementById('pos-toggle-client-details');
+    const clientFields = document.getElementById('pos-client-fields');
+    const clientArrow = document.getElementById('pos-client-arrow');
+    if (clientHeader && clientFields) {
+        clientHeader.addEventListener('click', () => {
+            const isHidden = clientFields.classList.toggle('hide');
+            if (clientArrow) clientArrow.textContent = isHidden ? '▼' : '▲';
+        });
+    }
+
+    // Botón Comanda (Ticket Interno)
+    if (btnComanda) {
+        btnComanda.addEventListener('click', () => submitPosCheckout(false));
+    }
+
+    // Botón Facturar (Ticket Fiscal Simulado)
+    if (btnFactura) {
+        btnFactura.addEventListener('click', () => submitPosCheckout(true));
+    }
+}
+
+function getPosComandaTotal() {
+    return state.posComanda.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+}
+
+function openPosCheckoutModal() {
+    const validItems = state.posComanda.filter(i => i.subtotal > 0 && i.description);
+    if (validItems.length === 0) {
+        Alert.warning('Agrega al menos un producto a la comanda antes de cobrar.');
+        return;
+    }
+
+    const total = getPosComandaTotal();
+    const totalDisplay = document.getElementById('checkout-total-display');
+    const orderInfo = document.getElementById('checkout-order-info');
+    const cashInput = document.getElementById('pos-cash-received');
+
+    if (totalDisplay) totalDisplay.textContent = `$${total.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (orderInfo) {
+        orderInfo.textContent = state.posCurrentTableId ? `Mesa ${state.posCurrentTableNum || state.posCurrentTableId} • Salón` : 'Venta Mostrador';
+    }
+
+    // Reset de efectivo y vuelto
+    if (cashInput) cashInput.value = '';
+    updatePosChangeCalculation();
+
+    // Activar Efectivo por defecto
+    document.querySelectorAll('.pos-method-pill').forEach(p => {
+        if (p.getAttribute('data-method') === 'Efectivo') p.classList.add('active');
+        else p.classList.remove('active');
+    });
+    state.posCheckoutMethod = 'Efectivo';
+    const cashBox = document.getElementById('pos-cash-calculator');
+    const multiBox = document.getElementById('pos-multi-payment-box');
+    if (cashBox) cashBox.classList.remove('hide');
+    if (multiBox) multiBox.classList.add('hide');
+
+    const modal = document.getElementById('modal-pos-checkout');
+    if (modal) modal.classList.remove('hide');
+}
+
+function closePosCheckoutModal() {
+    const modal = document.getElementById('modal-pos-checkout');
+    if (modal) modal.classList.add('hide');
+}
+
+function updatePosChangeCalculation() {
+    const cashInput = document.getElementById('pos-cash-received');
+    const changeDisplay = document.getElementById('pos-cash-change-display');
+    if (!cashInput || !changeDisplay) return;
+
+    const total = getPosComandaTotal();
+    const received = parseFloat(cashInput.value);
+
+    if (isNaN(received) || received === 0) {
+        changeDisplay.textContent = '$0,00';
+        changeDisplay.style.color = '#10b981';
+        return;
+    }
+
+    const change = received - total;
+    if (change >= 0) {
+        changeDisplay.textContent = `$${change.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        changeDisplay.style.color = '#10b981';
+    } else {
+        changeDisplay.textContent = `Faltan $${Math.abs(change).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        changeDisplay.style.color = '#ef4444';
+    }
+}
+
+// Pago Multi
+function initMultiPaymentRows() {
+    const total = getPosComandaTotal();
+    state.posMultiPayments = [
+        { payment_method: 'Efectivo', amount: parseFloat((total / 2).toFixed(2)) },
+        { payment_method: 'Payway', amount: parseFloat((total - (total / 2)).toFixed(2)) }
+    ];
+    renderMultiPaymentRows();
+}
+
+function renderMultiPaymentRows() {
+    const container = document.getElementById('pos-multi-rows-container');
+    const remLabel = document.getElementById('pos-multi-remaining');
+    if (!container) return;
+
+    const total = getPosComandaTotal();
+    let sum = 0;
+    let html = '';
+
+    state.posMultiPayments.forEach((p, idx) => {
+        sum += parseFloat(p.amount) || 0;
+        html += `
+            <div class="pos-multi-row">
+                <select onchange="updateMultiPaymentMethod(${idx}, this.value)" style="flex: 1.2;">
+                    <option value="Efectivo" ${p.payment_method === 'Efectivo' ? 'selected' : ''}>Efectivo</option>
+                    <option value="Payway" ${p.payment_method === 'Payway' ? 'selected' : ''}>Payway (Déb/Créd)</option>
+                    <option value="Mercado Pago" ${p.payment_method === 'Mercado Pago' ? 'selected' : ''}>Mercado Pago</option>
+                    <option value="Transferencia" ${p.payment_method === 'Transferencia' ? 'selected' : ''}>Transferencia</option>
+                </select>
+                <input type="number" step="0.01" value="${p.amount}" onchange="updateMultiPaymentAmount(${idx}, this.value)" style="flex: 1; font-weight: 700; text-align: right;">
+                <button type="button" class="btn-delete" onclick="removeMultiPaymentRow(${idx})" title="Quitar">&times;</button>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+
+    const diff = total - sum;
+    if (remLabel) {
+        if (Math.abs(diff) < 0.01) {
+            remLabel.textContent = 'Monto cubierto 100%';
+            remLabel.style.color = '#10b981';
+        } else if (diff > 0) {
+            remLabel.textContent = `Resta cubrir: $${diff.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
+            remLabel.style.color = '#ef4444';
+        } else {
+            remLabel.textContent = `Excedente: $${Math.abs(diff).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
+            remLabel.style.color = '#f59e0b';
+        }
+    }
+}
+
+function updateMultiPaymentMethod(idx, method) {
+    if (state.posMultiPayments[idx]) state.posMultiPayments[idx].payment_method = method;
+}
+
+function updateMultiPaymentAmount(idx, amount) {
+    if (state.posMultiPayments[idx]) {
+        state.posMultiPayments[idx].amount = parseFloat(amount) || 0;
+        renderMultiPaymentRows();
+    }
+}
+
+function removeMultiPaymentRow(idx) {
+    state.posMultiPayments.splice(idx, 1);
+    renderMultiPaymentRows();
+}
+
+const btnAddMulti = document.getElementById('btn-pos-add-multi-row');
+if (btnAddMulti) {
+    btnAddMulti.addEventListener('click', () => {
+        state.posMultiPayments.push({ payment_method: 'Efectivo', amount: 0 });
+        renderMultiPaymentRows();
+    });
+}
+
+// --- SUBMIT FINAL DE VENTA Y EMISIÓN DE TICKET ---
+
+async function submitPosCheckout(isInvoiced) {
+    const validItems = state.posComanda.filter(i => i.subtotal > 0 && i.description);
+    if (validItems.length === 0) {
+        Alert.warning('No hay productos válidos para cobrar.');
+        return;
+    }
+
+    const total = getPosComandaTotal();
+    const cashReceivedVal = parseFloat(document.getElementById('pos-cash-received')?.value) || null;
+    const changeVal = (cashReceivedVal !== null && cashReceivedVal >= total) ? (cashReceivedVal - total) : 0;
+
+    // Si es Pago Multi, validar que la suma coincida con el total
+    if (state.posCheckoutMethod === 'Pago Multi') {
+        const sumMulti = state.posMultiPayments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+        if (Math.abs(sumMulti - total) > 1) {
+            Alert.warning(`La suma de los pagos múltiples ($${sumMulti.toFixed(2)}) no coincide con el total ($${total.toFixed(2)}).`);
+            return;
+        }
+    }
+
+    const payload = {
+        items: validItems,
+        table_id: state.posCurrentTableId,
+        payment_method: state.posCheckoutMethod,
+        payments: state.posCheckoutMethod === 'Pago Multi' ? state.posMultiPayments : null,
+        cash_received: cashReceivedVal,
+        cash_change: changeVal,
+        is_invoiced: isInvoiced,
+        invoice_type: parseInt(document.getElementById('pos-invoice-type')?.value) || 11,
+        client_doc_type: parseInt(document.getElementById('pos-client-doc-type')?.value) || 99,
+        client_doc_number: document.getElementById('pos-client-doc-number')?.value.trim() || '',
+        client_name: document.getElementById('pos-client-name')?.value.trim() || 'Consumidor Final',
+        notes: state.posOrderNotes || '',
+        date: new Date().toISOString().split('T')[0]
+    };
+
+    try {
+        const response = await fetch(`${API_URL}/api/pos/checkout`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await safeResponseJSON(response, 'Error al procesar la venta');
+
+        closePosCheckoutModal();
+
+        // Guardar copia del último ticket para reimpresión instantánea
+        state.posLastReceipt = {
+            order: result.order,
+            items: result.items,
+            config: result.config,
+            isInvoiced: isInvoiced
+        };
+
+        // Limpiar comanda y estado
+        state.posComanda = [];
+        state.posOrderNotes = '';
+        state.posCurrentTableId = null;
+        state.posCurrentTableNum = null;
+        renderPosComanda();
+        updatePosTableIndicator();
+
+        // Disparar de inmediato la impresión a la comandera térmica
+        printPosThermalReceipt(result.order, result.items, result.config, isInvoiced);
+
+        // Modal de confirmación con botón manual de reimpresión
+        Swal.fire({
+            title: isInvoiced ? '¡Venta Facturada con Éxito!' : '¡Comanda Registrada!',
+            html: `
+                <div style="text-align: center; margin: 8px 0;">
+                    <p style="font-size: 1.15rem; font-weight: 700; color: #16a34a; margin-bottom: 6px;">
+                        ${isInvoiced ? `Factura C (CAE: ${result.order.cae || 'Generado'})` : `Comanda #${result.order.order_number}`}
+                    </p>
+                    <p style="color: #475569; font-size: 0.95rem; margin-bottom: 14px;">
+                        Total: <strong>$${parseFloat(result.order.total_amount).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong> (${result.order.payment_method})
+                    </p>
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 0.88rem; color: #334155;">
+                        🖨️ Ticket enviado a la impresora térmica. Si necesitas otra copia o no imprimió:
+                    </div>
+                    <button id="btn-swal-reprint" type="button" class="btn-primary" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0.65rem 1.2rem; font-size: 0.95rem; background: #0284c7; border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; width: 100%;">
+                        🖨️ Imprimir / Reimprimir Ticket Ahora
+                    </button>
+                </div>
+            `,
+            icon: 'success',
+            confirmButtonColor: '#d97706',
+            confirmButtonText: 'Nueva Venta',
+            customClass: {
+                popup: 'premium-swal-popup',
+                confirmButton: 'premium-swal-button'
+            },
+            didOpen: () => {
+                const btnReprint = document.getElementById('btn-swal-reprint');
+                if (btnReprint) {
+                    btnReprint.addEventListener('click', () => {
+                        printPosThermalReceipt(result.order, result.items, result.config, isInvoiced);
+                    });
+                }
+            }
+        });
+
+        // Recargar productos (para reflejar stock actualizado si descontó) y mesas
+        loadPosData();
+
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+// --- IMPRESIÓN DE TICKET TÉRMICO (80MM) Y REIMPRESIÓN ---
+
+function handlePosTestOrReprintTicket() {
+    if (state.posLastReceipt) {
+        printPosThermalReceipt(
+            state.posLastReceipt.order,
+            state.posLastReceipt.items,
+            state.posLastReceipt.config,
+            state.posLastReceipt.isInvoiced
+        );
+        Alert.info(`Reimprimiendo ${state.posLastReceipt.isInvoiced ? 'Factura' : 'Comanda #' + state.posLastReceipt.order.order_number}...`);
+    } else {
+        const testOrder = {
+            order_number: 'TEST',
+            date: new Date().toISOString().split('T')[0],
+            time: new Date().toTimeString().split(' ')[0],
+            total_amount: 1500,
+            payment_method: 'Efectivo',
+            cash_received: 2000,
+            cash_change: 500
+        };
+        const testItems = [
+            { description: 'Ticket de Prueba Comandera', quantity: 1, unit_price: 1500, subtotal: 1500 }
+        ];
+        printPosThermalReceipt(testOrder, testItems, null, false);
+        Alert.info('Enviando ticket de prueba a la impresora térmica...');
+    }
+}
+window.handlePosTestOrReprintTicket = handlePosTestOrReprintTicket;
+
+function printPosThermalReceipt(order, items, config, isInvoiced) {
+    const cfg = config || {
+        trade_name: 'Dulce Hora Villa Pueyrredon',
+        business_owner: 'DONATO PABLO GABRIEL',
+        cuit: '20443621033',
+        gross_income: '20443621033',
+        address: 'MOSCONI GRAL AV. 2268',
+        iva_condition: 'Monotributista'
+    };
+
+    // Eliminar iframe previo si existiera para garantizar documento limpio
+    const prevIframe = document.getElementById('pos-receipt-print-iframe');
+    if (prevIframe) {
+        prevIframe.remove();
+    }
+
+    // Crear iframe con ancho real positivo (requerido por el motor de render de Chromium)
+    const iframe = document.createElement('iframe');
+    iframe.id = 'pos-receipt-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.bottom = '0';
+    iframe.style.right = '0';
+    iframe.style.width = '80mm';
+    iframe.style.height = '400px';
+    iframe.style.border = 'none';
+    iframe.style.opacity = '0.01';
+    iframe.style.pointerEvents = 'none';
+    iframe.style.zIndex = '-9999';
+    document.body.appendChild(iframe);
+
+    // Filas de productos para el ticket
+    let itemsRowsHtml = '';
+    (items || []).forEach(it => {
+        const qty = parseFloat(it.quantity) || 1;
+        const price = parseFloat(it.unit_price) || 0;
+        const sub = parseFloat(it.subtotal || (qty * price)).toFixed(2);
+        itemsRowsHtml += `
+            <tr>
+                <td style="padding: 2px 0;">${it.description || it.name || 'Producto'}</td>
+                <td style="text-align: center; padding: 2px 0;">${qty}</td>
+                <td style="text-align: right; padding: 2px 0;">$${price.toFixed(2)}</td>
+                <td style="text-align: right; padding: 2px 0;">$${sub}</td>
+            </tr>
+        `;
+    });
+
+    const qrUrl = (order && order.afip_qr_url) ? `https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=2&data=${encodeURIComponent(order.afip_qr_url)}` : '';
+
+    const orderNum = order ? (order.order_number || order.id || '1') : '1';
+    const orderDate = order ? (order.date || new Date().toISOString().split('T')[0]) : '';
+    const orderTime = order ? (order.time || new Date().toTimeString().split(' ')[0]) : '';
+    const totalAmount = order ? parseFloat(order.total_amount || 0).toFixed(2) : '0.00';
+    const paymentMethod = order ? (order.payment_method || 'Efectivo') : 'Efectivo';
+
+    const receiptHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Ticket #${orderNum}</title>
+            <style>
+                @page { 
+                    margin: 0; 
+                    size: 80mm auto; 
+                }
+                * {
+                    box-sizing: border-box;
+                    margin: 0;
+                    padding: 0;
+                }
+                body {
+                    font-family: 'Courier New', Courier, monospace;
+                    font-size: 11px;
+                    line-height: 1.25;
+                    width: 72mm;
+                    margin: 0 auto;
+                    padding: 4mm 0;
+                    color: #000;
+                    background: #fff;
+                }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .bold { font-weight: bold; }
+                .divider { border-bottom: 1px dashed #000; margin: 5px 0; }
+                table { width: 100%; border-collapse: collapse; font-size: 11px; margin: 4px 0; }
+                .qr-box { text-align: center; margin: 8px 0; }
+                .qr-box img { width: 110px; height: 110px; display: inline-block; }
+            </style>
+        </head>
+        <body>
+            <div class="text-center bold" style="font-size: 14px;">${cfg.trade_name}</div>
+            <div class="text-center">${cfg.business_owner}</div>
+            <div class="text-center">CUIT: ${cfg.cuit}</div>
+            <div class="text-center">Ing. Brutos: ${cfg.gross_income}</div>
+            <div class="text-center">${cfg.address}</div>
+            <div class="text-center">IVA: ${cfg.iva_condition}</div>
+            <div class="divider"></div>
+
+            ${isInvoiced ? `
+                <div class="text-center bold" style="font-size: 13px;">FACTURA C</div>
+                <div class="text-center">P.Vta: ${String(order.pto_venta || 2).padStart(4, '0')} Comp. Nro: ${String(order.invoice_number || 1).padStart(8, '0')}</div>
+                <div class="text-center">Fecha: ${orderDate}  Hora: ${orderTime}</div>
+                <div class="divider"></div>
+                <div>A: ${order.client_name || 'Consumidor Final'}</div>
+                <div>Doc: ${order.client_doc_number ? (order.client_doc_type === 80 ? 'CUIT ' : 'DNI ') + order.client_doc_number : 'Consumidor Final'}</div>
+            ` : `
+                <div class="text-center bold" style="font-size: 13px;">COMANDA / TICKET</div>
+                <div class="text-center">Comanda Nro: #${orderNum}</div>
+                <div class="text-center">Fecha: ${orderDate}  Hora: ${orderTime}</div>
+                <div class="text-center bold">*** NO VÁLIDO COMO FACTURA ***</div>
+            `}
+
+            <div class="divider"></div>
+            <table>
+                <thead>
+                    <tr class="bold" style="border-bottom: 1px solid #000;">
+                        <th style="text-align: left; padding: 2px 0;">Detalle</th>
+                        <th style="padding: 2px 0;">Cant</th>
+                        <th style="text-align: right; padding: 2px 0;">P.Unit</th>
+                        <th style="text-align: right; padding: 2px 0;">Subt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${itemsRowsHtml}
+                </tbody>
+            </table>
+            <div class="divider"></div>
+
+            <table>
+                <tr>
+                    <td class="bold">TOTAL:</td>
+                    <td class="text-right bold" style="font-size: 13px;">$${totalAmount}</td>
+                </tr>
+                <tr>
+                    <td>Forma de Pago:</td>
+                    <td class="text-right">${paymentMethod}</td>
+                </tr>
+                ${(order && order.cash_received) ? `
+                <tr>
+                    <td>Abona con:</td>
+                    <td class="text-right">$${parseFloat(order.cash_received).toFixed(2)}</td>
+                </tr>
+                <tr>
+                    <td>Su Vuelto:</td>
+                    <td class="text-right bold">$${parseFloat(order.cash_change || 0).toFixed(2)}</td>
+                </tr>
+                ` : ''}
+            </table>
+
+            ${isInvoiced ? `
+                <div class="divider"></div>
+                <div class="text-center bold">CAE: ${order.cae}</div>
+                <div class="text-center">Vto. CAE: ${order.cae_due_date}</div>
+                <div class="qr-box">
+                    <img src="${qrUrl}" alt="QR AFIP">
+                    <div style="font-size: 8px;">Comprobante Autorizado por ARCA / AFIP</div>
+                </div>
+            ` : ''}
+
+            <div class="divider"></div>
+            <div class="text-center bold" style="margin-top: 6px;">¡Gracias por su compra!</div>
+            <div class="text-center" style="font-size: 9px; margin-top: 2px;">Dulce Hora</div>
+        </body>
+        </html>
+    `;
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(receiptHtml);
+    doc.close();
+
+    const doPrint = () => {
+        try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        } catch (err) {
+            console.error('Error al imprimir ticket con iframe:', err);
+            try {
+                const win = window.open('', '_blank', 'width=380,height=600');
+                if (win) {
+                    win.document.write(receiptHtml);
+                    win.document.close();
+                    win.focus();
+                    win.print();
+                }
+            } catch (winErr) {
+                console.error('Fallback window.open también falló:', winErr);
+            }
+        }
+    };
+
+    // Si tiene imagen de QR fiscal, esperar a que cargue antes de imprimir
+    const img = doc.querySelector('img');
+    if (img && !img.complete) {
+        img.onload = () => setTimeout(doPrint, 100);
+        img.onerror = () => setTimeout(doPrint, 100);
+        setTimeout(doPrint, 600);
+    } else {
+        setTimeout(doPrint, 300);
+    }
+}
+
+// --- GESTIÓN DE MESAS DE SALÓN ---
+
+function initTablesModalEvents() {
+    const modal = document.getElementById('modal-pos-tables');
+    const btnClose = document.getElementById('btn-pos-tables-close');
+    const btnCancel = document.getElementById('btn-pos-tables-cancel');
+    const btnAddTable = document.getElementById('btn-pos-add-table');
+    const btnMostrador = document.getElementById('btn-pos-select-mostrador');
+
+    if (btnClose) btnClose.addEventListener('click', closePosTablesModal);
+    if (btnCancel) btnCancel.addEventListener('click', closePosTablesModal);
+
+    if (btnAddTable) {
+        btnAddTable.addEventListener('click', async () => {
+            const numInput = document.getElementById('pos-new-table-num');
+            const num = parseInt(numInput?.value);
+            if (!num) {
+                Alert.warning('Ingresa un número de mesa válido.');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_URL}/api/pos/tables`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${state.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ table_number: num, name: `Mesa ${num}` })
+                });
+                await safeResponseJSON(response, 'Error al crear mesa');
+                if (numInput) numInput.value = '';
+                loadPosData();
+                renderPosTablesModal();
+                Alert.success(`Mesa ${num} agregada con éxito.`);
+            } catch (err) {
+                Alert.error(err.message);
+            }
+        });
+    }
+
+    if (btnMostrador) {
+        btnMostrador.addEventListener('click', () => {
+            state.posCurrentTableId = null;
+            state.posCurrentTableNum = null;
+            updatePosTableIndicator();
+            closePosTablesModal();
+        });
+    }
+}
+
+function openPosTablesModal() {
+    renderPosTablesModal();
+    const modal = document.getElementById('modal-pos-tables');
+    if (modal) modal.classList.remove('hide');
+}
+
+function closePosTablesModal() {
+    const modal = document.getElementById('modal-pos-tables');
+    if (modal) modal.classList.add('hide');
+}
+
+function renderPosTablesModal() {
+    const grid = document.getElementById('pos-tables-grid');
+    if (!grid) return;
+
+    if (!state.posTables || state.posTables.length === 0) {
+        grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: var(--text-muted);">No hay mesas configuradas.</p>';
+        return;
+    }
+
+    let html = '';
+    state.posTables.forEach(t => {
+        const isOpen = t.status === 'open';
+        html += `
+            <div class="pos-table-card ${isOpen ? 'open' : 'closed'}" onclick="selectPosTable(${t.id}, ${t.table_number}, '${t.status}')">
+                <div class="pos-table-card-num">${t.name || 'Mesa ' + t.table_number}</div>
+                <div class="pos-table-card-status">${isOpen ? 'Ocupada' : 'Libre'}</div>
+                ${isOpen && t.total_amount ? `<div class="pos-table-card-total">$${parseFloat(t.total_amount).toFixed(2)}</div>` : ''}
+            </div>
+        `;
+    });
+
+    grid.innerHTML = html;
+}
+
+async function selectPosTable(tableId, tableNum, currentStatus) {
+    state.posCurrentTableId = tableId;
+    state.posCurrentTableNum = tableNum;
+    updatePosTableIndicator();
+
+    if (currentStatus === 'closed') {
+        try {
+            await fetch(`${API_URL}/api/pos/tables/${tableId}/open`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${state.token}` }
+            });
+            loadPosData();
+        } catch (e) {}
+    }
+
+    closePosTablesModal();
+}
+
+// --- MODAL DE PRODUCTOS PERSONALIZADOS Y ACCESO RÁPIDO (ABM) ---
+
+function initCustomProductsModalEvents() {
+    const modal = document.getElementById('modal-pos-custom-products');
+    const btnClose = document.getElementById('btn-pos-custom-prod-close');
+    const btnCancel = document.getElementById('btn-pos-cancel-prod-form');
+    const tabList = document.getElementById('tab-btn-prod-list');
+    const tabForm = document.getElementById('tab-btn-prod-form');
+    const filterInput = document.getElementById('pos-custom-prod-filter');
+    const catFilter = document.getElementById('pos-custom-prod-cat-filter');
+    const form = document.getElementById('pos-product-form');
+
+    if (btnClose) btnClose.addEventListener('click', closePosCustomProductsModal);
+    if (btnCancel) btnCancel.addEventListener('click', () => switchPosCustomProdTab('list'));
+
+    if (tabList) tabList.addEventListener('click', () => switchPosCustomProdTab('list'));
+    if (tabForm) tabForm.addEventListener('click', () => {
+        resetPosProductForm();
+        switchPosCustomProdTab('form');
+    });
+
+    if (filterInput) filterInput.addEventListener('input', renderPosCustomProductsTable);
+    if (catFilter) catFilter.addEventListener('change', renderPosCustomProductsTable);
+
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('pos-pf-id').value;
+            const code = document.getElementById('pos-pf-code').value.trim();
+            const name = document.getElementById('pos-pf-name').value.trim();
+            const category = document.getElementById('pos-pf-category').value.trim();
+            const description = document.getElementById('pos-pf-desc').value.trim();
+            const price = parseFloat(document.getElementById('pos-pf-price').value) || 0;
+            const unit_measure = document.getElementById('pos-pf-unit').value;
+            const iva_rate = parseFloat(document.getElementById('pos-pf-iva').value) || 10.5;
+            const auto_deduct_stock = document.querySelector('input[name="pos-pf-stock-rule"]:checked')?.value || 1;
+            const is_quick_access = document.getElementById('pos-pf-quick-access').checked ? 1 : 0;
+            const quick_access_order = parseInt(document.getElementById('pos-pf-quick-order').value) || 0;
+
+            const payload = {
+                code, name, category, description, price, unit_measure,
+                iva_rate, auto_deduct_stock: parseInt(auto_deduct_stock),
+                is_quick_access, quick_access_order
+            };
+
+            try {
+                const url = id ? `${API_URL}/api/pos/products/${id}` : `${API_URL}/api/pos/products`;
+                const method = id ? 'PUT' : 'POST';
+
+                const response = await fetch(url, {
+                    method,
+                    headers: {
+                        'Authorization': `Bearer ${state.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                await safeResponseJSON(response, 'Error al guardar producto');
+                Alert.success(id ? 'Producto actualizado correctamente.' : 'Producto creado con éxito.');
+                switchPosCustomProdTab('list');
+                loadPosData();
+            } catch (err) {
+                Alert.error(err.message);
+            }
+        });
+    }
+}
+
+function openPosCustomProductsModal() {
+    switchPosCustomProdTab('list');
+    populatePosCategoriesDatalist();
+    renderPosCustomProductsTable();
+    const modal = document.getElementById('modal-pos-custom-products');
+    if (modal) modal.classList.remove('hide');
+}
+
+function closePosCustomProductsModal() {
+    const modal = document.getElementById('modal-pos-custom-products');
+    if (modal) modal.classList.add('hide');
+}
+
+function switchPosCustomProdTab(tabName) {
+    const listView = document.getElementById('pos-prod-list-view');
+    const formView = document.getElementById('pos-prod-form-view');
+    const tabListBtn = document.getElementById('tab-btn-prod-list');
+    const tabFormBtn = document.getElementById('tab-btn-prod-form');
+
+    if (tabName === 'list') {
+        if (listView) listView.classList.remove('hide');
+        if (formView) formView.classList.add('hide');
+        if (tabListBtn) tabListBtn.classList.add('active');
+        if (tabFormBtn) tabFormBtn.classList.remove('active');
+        renderPosCustomProductsTable();
+    } else {
+        if (listView) listView.classList.add('hide');
+        if (formView) formView.classList.remove('hide');
+        if (tabListBtn) tabListBtn.classList.remove('active');
+        if (tabFormBtn) tabFormBtn.classList.add('active');
+    }
+}
+
+function populatePosCategoriesDatalist() {
+    const datalist = document.getElementById('pos-categories-datalist');
+    const selectFilter = document.getElementById('pos-custom-prod-cat-filter');
+    if (!datalist || !selectFilter) return;
+
+    datalist.innerHTML = '';
+    selectFilter.innerHTML = '<option value="">Todas las categorías</option>';
+
+    if (state.posCategories) {
+        state.posCategories.forEach(c => {
+            const opt1 = document.createElement('option');
+            opt1.value = c.category;
+            datalist.appendChild(opt1);
+
+            const opt2 = document.createElement('option');
+            opt2.value = c.category;
+            opt2.textContent = c.category;
+            selectFilter.appendChild(opt2);
+        });
+    }
+}
+
+function renderPosCustomProductsTable() {
+    const tbody = document.getElementById('pos-custom-prod-tbody');
+    if (!tbody) return;
+
+    const filterText = (document.getElementById('pos-custom-prod-filter')?.value || '').toLowerCase().trim();
+    const filterCat = document.getElementById('pos-custom-prod-cat-filter')?.value || '';
+
+    let prods = state.posProducts || [];
+    if (filterCat) prods = prods.filter(p => p.category === filterCat);
+    if (filterText) {
+        prods = prods.filter(p => (p.name && p.name.toLowerCase().includes(filterText)) || (p.code && p.code.toLowerCase().includes(filterText)));
+    }
+
+    if (prods.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No se encontraron productos.</td></tr>';
+        return;
+    }
+
+    let html = '';
+    prods.forEach(p => {
+        const isQuick = p.is_quick_access === 1;
+        const autoDeduct = p.auto_deduct_stock === 1;
+        html += `
+            <tr>
+                <td><strong>${p.code || '—'}</strong></td>
+                <td>${p.name}</td>
+                <td><span class="badge">${p.category}</span></td>
+                <td style="font-weight: 700;">$${parseFloat(p.price).toFixed(2)}</td>
+                <td>
+                    <span class="badge ${autoDeduct ? 'badge-success' : 'badge-warning'}" title="${autoDeduct ? 'Descuento automático en venta' : 'Stock manual - No descuenta'}">
+                        ${autoDeduct ? 'Auto' : 'Manual'}
+                    </span>
+                </td>
+                <td style="text-align: center;">
+                    <button type="button" class="btn-icon" onclick="toggleQuickAccessProduct(${p.id}, ${isQuick ? 0 : 1})" title="${isQuick ? 'Quitar de acceso rápido' : 'Agregar a acceso rápido'}" style="font-size: 1.1rem; color: ${isQuick ? '#f59e0b' : 'var(--text-muted)'}; background:none; border:none; cursor:pointer;">
+                        ${isQuick ? '★' : '☆'}
+                    </button>
+                </td>
+                <td style="display: flex; gap: 4px;">
+                    <button type="button" class="btn-icon" onclick="editCustomProduct(${p.id})" title="Editar">✏️</button>
+                    <button type="button" class="btn-delete" onclick="deleteCustomProduct(${p.id}, '${p.name}')" title="Desactivar">🗑️</button>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+}
+
+function openPosNewProductModal() {
+    openPosCustomProductsModal();
+    resetPosProductForm();
+    switchPosCustomProdTab('form');
+    setTimeout(() => {
+        const nameInput = document.getElementById('pos-pf-name');
+        if (nameInput) nameInput.focus();
+    }, 150);
+}
+
+function quickEditPosProduct(prodId) {
+    openPosCustomProductsModal();
+    editCustomProduct(prodId);
+    setTimeout(() => {
+        const priceInput = document.getElementById('pos-pf-price');
+        if (priceInput) {
+            priceInput.focus();
+            priceInput.select();
+        }
+    }, 150);
+}
+
+function resetPosProductForm() {
+    document.getElementById('pos-pf-id').value = '';
+    document.getElementById('pos-pf-code').value = '';
+    document.getElementById('pos-pf-name').value = '';
+    document.getElementById('pos-pf-category').value = '';
+    document.getElementById('pos-pf-desc').value = '';
+    document.getElementById('pos-pf-price').value = '';
+    document.getElementById('pos-pf-unit').value = 'unidad';
+    document.getElementById('pos-pf-iva').value = '21.0';
+    document.getElementById('pos-pf-stock-auto').checked = true;
+    document.getElementById('pos-pf-quick-access').checked = false;
+    document.getElementById('pos-pf-quick-order').value = '0';
+
+    const btnDeleteFromForm = document.getElementById('btn-pos-delete-prod-from-form');
+    if (btnDeleteFromForm) btnDeleteFromForm.classList.add('hide');
+}
+
+function editCustomProduct(prodId) {
+    const p = state.posProducts.find(x => x.id === prodId);
+    if (!p) return;
+
+    document.getElementById('pos-pf-id').value = p.id;
+    document.getElementById('pos-pf-code').value = p.code || '';
+    document.getElementById('pos-pf-name').value = p.name;
+    document.getElementById('pos-pf-category').value = p.category;
+    document.getElementById('pos-pf-desc').value = p.description || '';
+    document.getElementById('pos-pf-price').value = p.price;
+    document.getElementById('pos-pf-unit').value = p.unit_measure || 'unidad';
+    document.getElementById('pos-pf-iva').value = p.iva_rate || '21.0';
+
+    if (p.auto_deduct_stock === 0) {
+        document.getElementById('pos-pf-stock-manual').checked = true;
+    } else {
+        document.getElementById('pos-pf-stock-auto').checked = true;
+    }
+
+    document.getElementById('pos-pf-quick-access').checked = p.is_quick_access === 1;
+    document.getElementById('pos-pf-quick-order').value = p.quick_access_order || 0;
+
+    const btnDeleteFromForm = document.getElementById('btn-pos-delete-prod-from-form');
+    if (btnDeleteFromForm) {
+        btnDeleteFromForm.classList.remove('hide');
+        btnDeleteFromForm.onclick = () => {
+            deleteCustomProduct(p.id, p.name).then(() => {
+                switchPosCustomProdTab('list');
+            });
+        };
+    }
+
+    switchPosCustomProdTab('form');
+}
+
+async function toggleQuickAccessProduct(prodId, nextState) {
+    try {
+        await fetch(`${API_URL}/api/pos/products/${prodId}/quick-access`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${state.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ is_quick_access: nextState, quick_access_order: 0 })
+        });
+        loadPosData();
+        renderPosCustomProductsTable();
+    } catch (err) {
+        Alert.error('Error al actualizar acceso rápido');
+    }
+}
+
+async function deleteCustomProduct(prodId, prodName) {
+    const confirmed = await Alert.confirm(`¿Estás seguro de desactivar el producto "${prodName}"?`, 'Desactivar Producto', 'Sí, desactivar', 'Cancelar');
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/pos/products/${prodId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        await safeResponseJSON(response, 'Error al dar de baja el producto');
+        Alert.success('Producto desactivado correctamente.');
+        loadPosData();
+        renderPosCustomProductsTable();
+    } catch (err) {
+        Alert.error(err.message);
+    }
+}
+
+// --- MODAL DE NOTAS Y CLIENTE ---
+
+function initNotesModalEvents() {
+    const modal = document.getElementById('modal-pos-notes');
+    const btnClose = document.getElementById('btn-pos-notes-close');
+    const btnCancel = document.getElementById('btn-pos-notes-cancel');
+    const btnSave = document.getElementById('btn-pos-notes-save');
+
+    if (btnClose) btnClose.addEventListener('click', closePosNotesModal);
+    if (btnCancel) btnCancel.addEventListener('click', closePosNotesModal);
+
+    if (btnSave) {
+        btnSave.addEventListener('click', () => {
+            const notesInput = document.getElementById('pos-order-notes-input');
+            const clientInput = document.getElementById('pos-order-client-input');
+            state.posOrderNotes = notesInput ? notesInput.value.trim() : '';
+            state.posOrderClient = clientInput ? clientInput.value.trim() : '';
+            closePosNotesModal();
+            Alert.success('Notas registradas en la comanda actual.');
+        });
+    }
+}
+
+function openPosNotesModal() {
+    const notesInput = document.getElementById('pos-order-notes-input');
+    const clientInput = document.getElementById('pos-order-client-input');
+    if (notesInput) notesInput.value = state.posOrderNotes || '';
+    if (clientInput) clientInput.value = state.posOrderClient || '';
+
+    const modal = document.getElementById('modal-pos-notes');
+    if (modal) modal.classList.remove('hide');
+}
+
+function closePosNotesModal() {
+    const modal = document.getElementById('modal-pos-notes');
+    if (modal) modal.classList.add('hide');
+}
+
+// Global window assignments for inline onclick handlers
+window.loadPosData = loadPosData;
+window.addPosProductToComanda = addPosProductToComanda;
+window.addEmptyPosComandaRows = addEmptyPosComandaRows;
+window.handlePosCodeLookup = handlePosCodeLookup;
+window.updatePosRowQty = updatePosRowQty;
+window.updatePosRowPrice = updatePosRowPrice;
+window.removePosRow = removePosRow;
+window.clearPosComanda = clearPosComanda;
+window.openPosCheckoutModal = openPosCheckoutModal;
+window.closePosCheckoutModal = closePosCheckoutModal;
+window.openPosTablesModal = openPosTablesModal;
+window.closePosTablesModal = closePosTablesModal;
+window.selectPosTable = selectPosTable;
+window.openPosCustomProductsModal = openPosCustomProductsModal;
+window.closePosCustomProductsModal = closePosCustomProductsModal;
+window.editCustomProduct = editCustomProduct;
+window.deleteCustomProduct = deleteCustomProduct;
+window.toggleQuickAccessProduct = toggleQuickAccessProduct;
+window.openPosNotesModal = openPosNotesModal;
+window.closePosNotesModal = closePosNotesModal;
+window.updateMultiPaymentMethod = updateMultiPaymentMethod;
+window.updateMultiPaymentAmount = updateMultiPaymentAmount;
+window.removeMultiPaymentRow = removeMultiPaymentRow;
+
 
 

@@ -127,10 +127,20 @@ async function runMigrations() {
 }
 
 function mysqlToSqlite(sql) {
-  return sql
+  const clean = sql.trim();
+  if (/ALTER\s+TABLE\s+[\s\S]*ADD\s+CONSTRAINT/i.test(clean)) {
+    return 'SELECT 1';
+  }
+  if (/ALTER\s+TABLE\s+[\s\S]*MODIFY\s+COLUMN/i.test(clean)) {
+    return 'SELECT 1';
+  }
+  return clean
     .replace(/INT AUTO_INCREMENT PRIMARY KEY/gi, 'INTEGER PRIMARY KEY AUTOINCREMENT')
     .replace(/DECIMAL\(\d+,\s*\d+\)/gi, 'REAL')
     .replace(/VARCHAR\(\d+\)/gi, 'TEXT')
+    .replace(/ENUM\([^)]+\)/gi, 'TEXT')
+    .replace(/ON UPDATE CURRENT_TIMESTAMP/gi, '')
+    .replace(/\s+AFTER\s+[`"']?[a-zA-Z0-9_]+[`"']?/gi, '')
     .replace(/TIMESTAMP DEFAULT CURRENT_TIMESTAMP/gi, 'DATETIME DEFAULT CURRENT_TIMESTAMP')
     .replace(/TIMESTAMP NULL/gi, 'DATETIME')
     .replace(/TIMESTAMP/gi, 'DATETIME')

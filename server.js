@@ -69,10 +69,20 @@ let db = {
 };
 
 function mysqlToSqlite(sql) {
-  return sql
+  const clean = sql.trim();
+  if (/ALTER\s+TABLE\s+[\s\S]*ADD\s+CONSTRAINT/i.test(clean)) {
+    return 'SELECT 1';
+  }
+  if (/ALTER\s+TABLE\s+[\s\S]*MODIFY\s+COLUMN/i.test(clean)) {
+    return 'SELECT 1';
+  }
+  return clean
     .replace(/INT AUTO_INCREMENT PRIMARY KEY/gi, 'INTEGER PRIMARY KEY AUTOINCREMENT')
     .replace(/DECIMAL\(\d+,\s*\d+\)/gi, 'REAL')
     .replace(/VARCHAR\(\d+\)/gi, 'TEXT')
+    .replace(/ENUM\([^)]+\)/gi, 'TEXT')
+    .replace(/ON UPDATE CURRENT_TIMESTAMP/gi, '')
+    .replace(/\s+AFTER\s+[`"']?[a-zA-Z0-9_]+[`"']?/gi, '')
     .replace(/TIMESTAMP DEFAULT CURRENT_TIMESTAMP/gi, 'DATETIME DEFAULT CURRENT_TIMESTAMP')
     .replace(/TIMESTAMP NULL/gi, 'DATETIME')
     .replace(/TIMESTAMP/gi, 'DATETIME')
@@ -1739,16 +1749,36 @@ app.get('/api/inventory/products', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/inventory/products', authenticateToken, async (req, res) => {
-  const { code, name, category } = req.body;
+  const { code, name, category, price, unit_measure } = req.body;
   if (!name || !category) return res.status(400).json({ error: 'Nombre y categoría obligatorios' });
   try {
-    const result = await db.query('INSERT INTO products (code, name, category) VALUES (?, ?, ?)', [code || null, name, category]);
-    res.status(201).json({ id: result.insertId, code, name, category, current_stock: 0 });
+    const result = await db.query(
+      'INSERT INTO products (code, name, category, price, unit_measure) VALUES (?, ?, ?, ?, ?)',
+      [code || null, name, category, parseFloat(price) || 0, unit_measure || 'unidad']
+    );
+    res.status(201).json({ id: result.insertId, code, name, category, price: parseFloat(price) || 0, unit_measure: unit_measure || 'unidad', current_stock: 0 });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al crear producto' });
   }
 });
+
+app.put('/api/inventory/products/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { code, name, category, price, unit_measure } = req.body;
+  if (!name || !category) return res.status(400).json({ error: 'Nombre y categoría obligatorios' });
+  try {
+    await db.query(
+      'UPDATE products SET code = ?, name = ?, category = ?, price = ?, unit_measure = COALESCE(?, unit_measure) WHERE id = ?',
+      [code || null, name, category, parseFloat(price) || 0, unit_measure || null, id]
+    );
+    res.json({ message: 'Producto actualizado con éxito' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar producto' });
+  }
+});
+
 
 app.post('/api/inventory/movements', authenticateToken, async (req, res) => {
   const { product_id, quantity, type, shift, date } = req.body;
@@ -1777,6 +1807,614 @@ app.post('/api/inventory/movements', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al registrar el movimiento de stock' });
+  }
+});
+
+// --- RUTAS DEL SISTEMA DE PUNTO DE VENTA (POS) ---
+
+// 1. Obtener productos activos con stock actual para la comanda y catálogo
+app.get('/api/pos/products', authenticateToken, async (req, res) => {
+  const { category, quick_access, search } = req.query;
+  try {
+    let query = `
+      SELECT p.*, COALESCE(SUM(sm.quantity), 0) AS current_stock 
+      FROM products p 
+      LEFT JOIN stock_movements sm ON p.id = sm.product_id 
+      WHERE p.is_active = 1
+    `;
+    const params = [];
+
+    if (category && category !== 'TODOS' && category !== 'ACCESO RÁPIDO') {
+      query += ' AND p.category = ?';
+      params.push(category);
+    }
+    if (quick_access === 'true' || category === 'ACCESO RÁPIDO') {
+      query += ' AND p.is_quick_access = 1';
+    }
+    if (search && search.trim() !== '') {
+      query += ' AND (p.name LIKE ? OR p.code LIKE ?)';
+      params.push(`%${search.trim()}%`, `%${search.trim()}%`);
+    }
+
+    query += ' GROUP BY p.id ORDER BY p.quick_access_order ASC, p.name ASC';
+    const products = await db.query(query, params);
+    res.json(products);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener productos para el POS' });
+  }
+});
+
+// 2. Crear un nuevo producto personalizado
+app.post('/api/pos/products', authenticateToken, async (req, res) => {
+  const {
+    code,
+    name,
+    description,
+    category,
+    price,
+    unit_measure,
+    iva_rate,
+    auto_deduct_stock,
+    is_promo,
+    is_quick_access,
+    quick_access_order
+  } = req.body;
+
+  if (!name || price === undefined) {
+    return res.status(400).json({ error: 'El nombre y el precio son obligatorios' });
+  }
+
+  try {
+    const result = await db.query(`
+      INSERT INTO products (
+        code, name, description, category, price, unit_measure, iva_rate,
+        auto_deduct_stock, is_promo, is_quick_access, quick_access_order, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `, [
+      code || null,
+      name,
+      description || '',
+      category || 'Varios',
+      parseFloat(price) || 0,
+      unit_measure || 'unidad',
+      iva_rate !== undefined ? parseFloat(iva_rate) : 10.5,
+      auto_deduct_stock !== undefined ? parseInt(auto_deduct_stock) : 1,
+      is_promo ? 1 : 0,
+      is_quick_access ? 1 : 0,
+      parseInt(quick_access_order) || 0
+    ]);
+
+    res.status(201).json({
+      id: result.insertId,
+      message: 'Producto creado exitosamente'
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al registrar nuevo producto' });
+  }
+});
+
+// 3. Modificar producto existente
+app.put('/api/pos/products/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const {
+    code,
+    name,
+    description,
+    category,
+    price,
+    unit_measure,
+    iva_rate,
+    auto_deduct_stock,
+    is_promo,
+    is_quick_access,
+    quick_access_order
+  } = req.body;
+
+  try {
+    await db.query(`
+      UPDATE products 
+      SET code = ?, name = ?, description = ?, category = ?, price = ?, unit_measure = ?,
+          iva_rate = ?, auto_deduct_stock = ?, is_promo = ?, is_quick_access = ?, quick_access_order = ?
+      WHERE id = ?
+    `, [
+      code || null,
+      name,
+      description || '',
+      category || 'Varios',
+      parseFloat(price) || 0,
+      unit_measure || 'unidad',
+      parseFloat(iva_rate) || 10.5,
+      parseInt(auto_deduct_stock) !== undefined ? parseInt(auto_deduct_stock) : 1,
+      is_promo ? 1 : 0,
+      is_quick_access ? 1 : 0,
+      parseInt(quick_access_order) || 0,
+      id
+    ]);
+    res.json({ message: 'Producto actualizado con éxito' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar producto' });
+  }
+});
+
+// 4. Desactivar producto (baja lógica)
+app.delete('/api/pos/products/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.query('UPDATE products SET is_active = 0 WHERE id = ?', [id]);
+    res.json({ message: 'Producto dado de baja correctamente' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al dar de baja el producto' });
+  }
+});
+
+// 5. Configurar acceso rápido
+app.patch('/api/pos/products/:id/quick-access', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { is_quick_access, quick_access_order } = req.body;
+  try {
+    await db.query(
+      'UPDATE products SET is_quick_access = ?, quick_access_order = ? WHERE id = ?',
+      [is_quick_access ? 1 : 0, parseInt(quick_access_order) || 0, id]
+    );
+    res.json({ message: 'Acceso rápido actualizado' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar acceso rápido' });
+  }
+});
+
+// 6. Obtener categorías con cantidad de productos activos
+app.get('/api/pos/categories', authenticateToken, async (req, res) => {
+  try {
+    const categories = await db.query(`
+      SELECT category, COUNT(*) as count 
+      FROM products 
+      WHERE is_active = 1 
+      GROUP BY category 
+      ORDER BY category ASC
+    `);
+    res.json(categories);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener categorías' });
+  }
+});
+
+// 7. Mesas de Salón
+app.get('/api/pos/tables', authenticateToken, async (req, res) => {
+  try {
+    const tables = await db.query(`
+      SELECT t.*, o.order_number, o.total_amount, o.client_name 
+      FROM pos_tables t 
+      LEFT JOIN pos_orders o ON t.current_order_id = o.id 
+      ORDER BY t.table_number ASC
+    `);
+    res.json(tables);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al listar mesas' });
+  }
+});
+
+app.post('/api/pos/tables', authenticateToken, async (req, res) => {
+  const { table_number, name } = req.body;
+  if (!table_number) return res.status(400).json({ error: 'El número de mesa es obligatorio' });
+  try {
+    const result = await db.query(
+      "INSERT INTO pos_tables (table_number, name, status) VALUES (?, ?, 'closed')",
+      [parseInt(table_number), name || `Mesa ${table_number}`]
+    );
+    res.status(201).json({ id: result.insertId, message: 'Mesa creada con éxito' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al crear mesa' });
+  }
+});
+
+app.post('/api/pos/tables/:id/open', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.query(
+      "UPDATE pos_tables SET status = 'open', opened_at = ? WHERE id = ?",
+      [now, id]
+    );
+    res.json({ message: 'Mesa abierta' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al abrir mesa' });
+  }
+});
+
+app.post('/api/pos/tables/:id/close', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.query(
+      "UPDATE pos_tables SET status = 'closed', current_order_id = NULL, opened_at = NULL WHERE id = ?",
+      [id]
+    );
+    res.json({ message: 'Mesa cerrada' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al cerrar mesa' });
+  }
+});
+
+// 8. Configuración del POS y Comandera
+app.get('/api/pos/config', authenticateToken, async (req, res) => {
+  try {
+    const configs = await db.query('SELECT * FROM pos_config WHERE id = 1');
+    if (configs.length === 0) {
+      return res.json({
+        id: 1,
+        trade_name: 'Dulce Hora Villa Pueyrredon',
+        business_owner: 'DONATO PABLO GABRIEL',
+        cuit: '20443621033',
+        gross_income: '20443621033',
+        address: 'MOSCONI GRAL AV. 2268',
+        activity_start: '2024-06-01',
+        iva_condition: 'Monotributista',
+        default_punto_venta: 2,
+        printer_paper_width: 80
+      });
+    }
+    res.json(configs[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener configuración del POS' });
+  }
+});
+
+app.put('/api/pos/config', authenticateToken, async (req, res) => {
+  const {
+    trade_name,
+    business_owner,
+    cuit,
+    gross_income,
+    address,
+    activity_start,
+    iva_condition,
+    default_punto_venta,
+    printer_paper_width
+  } = req.body;
+
+  try {
+    await db.query(`
+      UPDATE pos_config 
+      SET trade_name = ?, business_owner = ?, cuit = ?, gross_income = ?,
+          address = ?, activity_start = ?, iva_condition = ?, default_punto_venta = ?,
+          printer_paper_width = ?
+      WHERE id = 1
+    `, [
+      trade_name || 'Dulce Hora Villa Pueyrredon',
+      business_owner || 'DONATO PABLO GABRIEL',
+      cuit || '20443621033',
+      gross_income || '20443621033',
+      address || 'MOSCONI GRAL AV. 2268',
+      activity_start || '2024-06-01',
+      iva_condition || 'Monotributista',
+      parseInt(default_punto_venta) || 2,
+      parseInt(printer_paper_width) || 80
+    ]);
+    res.json({ message: 'Configuración guardada' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al guardar configuración del POS' });
+  }
+});
+
+// 9. CHECKOUT / COBRO COMPLETO DE VENTA (COMANDAS & FACTURAS)
+app.post('/api/pos/checkout', authenticateToken, async (req, res) => {
+  const {
+    items,
+    table_id,
+    payment_method,
+    payments,
+    cash_received,
+    cash_change,
+    is_invoiced,
+    invoice_type,
+    client_doc_type,
+    client_doc_number,
+    client_name,
+    notes,
+    date
+  } = req.body;
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Debe incluir al menos un producto en la venta' });
+  }
+
+  const orderDate = date || new Date().toISOString().split('T')[0];
+  const orderTime = new Date().toTimeString().split(' ')[0];
+
+  try {
+    // A. Calcular montos e IVA
+    let totalNeto = 0;
+    let totalIva105 = 0;
+    let totalIva21 = 0;
+    let totalAmount = 0;
+
+    for (const item of items) {
+      const qty = parseFloat(item.quantity) || 1;
+      const price = parseFloat(item.unit_price) || 0;
+      const sub = parseFloat(item.subtotal) || (qty * price);
+      const ivaRate = parseFloat(item.iva_rate) || 10.5;
+
+      totalAmount += sub;
+
+      // Desglose IVA
+      const baseNeto = sub / (1 + (ivaRate / 100));
+      const ivaMonto = sub - baseNeto;
+
+      totalNeto += baseNeto;
+      if (Math.abs(ivaRate - 10.5) < 0.1) {
+        totalIva105 += ivaMonto;
+      } else {
+        totalIva21 += ivaMonto;
+      }
+    }
+
+    // B. Obtener siguiente número correlativo de comanda
+    const orderNumRows = await db.query('SELECT COALESCE(MAX(order_number), 0) + 1 AS next_num FROM pos_orders');
+    const orderNumber = orderNumRows[0].next_num || 1;
+
+    // C. Obtener configuración fiscal
+    const configRows = await db.query('SELECT * FROM pos_config WHERE id = 1');
+    const config = (configRows && configRows[0]) ? configRows[0] : {
+      trade_name: 'Dulce Hora Villa Pueyrredon',
+      business_owner: 'DONATO PABLO GABRIEL',
+      cuit: '20443621033',
+      gross_income: '20443621033',
+      address: 'MOSCONI GRAL AV. 2268',
+      activity_start: '2024-06-01',
+      iva_condition: 'Monotributista',
+      default_punto_venta: 2,
+      printer_paper_width: 80
+    };
+
+    // D. Si es facturación fiscal: generar comprobante fiscal simulado (mock CAE y QR oficial)
+    let ptoVenta = null;
+    let invNumber = null;
+    let caeNumber = null;
+    let caeDueDate = null;
+    let afipQrUrl = null;
+
+    if (is_invoiced) {
+      ptoVenta = config.default_punto_venta || 2;
+      const invNumRows = await db.query(
+        'SELECT COALESCE(MAX(invoice_number), 0) + 1 AS next_inv FROM pos_orders WHERE is_invoiced = 1 AND punto_venta = ?',
+        [ptoVenta]
+      );
+      invNumber = invNumRows[0].next_inv || 1;
+
+      // Simulación oficial de CAE (14 dígitos)
+      caeNumber = `74${Date.now().toString().slice(-12)}`;
+
+      // Vencimiento CAE: hoy + 10 días
+      const due = new Date();
+      due.setDate(due.getDate() + 10);
+      caeDueDate = due.toISOString().split('T')[0];
+
+      // Formato oficial AFIP QR JSON
+      const qrData = {
+        ver: 1,
+        fecha: orderDate,
+        cuit: parseInt(config.cuit.replace(/\D/g, '')) || 20443621033,
+        ptoVta: ptoVenta,
+        tipoCmp: invoice_type || 11, // 11 = Factura C
+        nroCmp: invNumber,
+        importe: parseFloat(totalAmount.toFixed(2)),
+        moneda: 'PES',
+        ctz: 1,
+        tipoDocRec: client_doc_type ? parseInt(client_doc_type) : 99,
+        nroDocRec: client_doc_number ? parseInt(client_doc_number.replace(/\D/g, '')) || 0 : 0,
+        tipoCodAut: 'E',
+        codAut: parseInt(caeNumber)
+      };
+
+      const qrJsonString = JSON.stringify(qrData);
+      const qrBase64 = Buffer.from(qrJsonString).toString('base64');
+      afipQrUrl = `https://www.afip.gob.ar/fe/qr/?p=${qrBase64}`;
+    }
+
+    // E. Insertar cabecera de la orden
+    const insertOrderResult = await db.query(`
+      INSERT INTO pos_orders (
+        order_number, user_id, daily_register_id, table_id, date, time,
+        neto_amount, iva_105_amount, iva_21_amount, total_amount,
+        payment_method, cash_received, cash_change,
+        is_invoiced, invoice_type, punto_venta, invoice_number, cae, cae_due_date, afip_qr_url,
+        client_doc_type, client_doc_number, client_name, notes, status
+      ) VALUES (
+        ?, ?, NULL, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, 'completed'
+      )
+    `, [
+      orderNumber,
+      req.user.id,
+      table_id ? parseInt(table_id) : null,
+      orderDate,
+      orderTime,
+      parseFloat(totalNeto.toFixed(2)),
+      parseFloat(totalIva105.toFixed(2)),
+      parseFloat(totalIva21.toFixed(2)),
+      parseFloat(totalAmount.toFixed(2)),
+      payment_method || 'Efectivo',
+      cash_received !== undefined && cash_received !== null ? parseFloat(cash_received) : null,
+      cash_change !== undefined && cash_change !== null ? parseFloat(cash_change) : null,
+      is_invoiced ? 1 : 0,
+      is_invoiced ? (invoice_type || 11) : null,
+      ptoVenta,
+      invNumber,
+      caeNumber,
+      caeDueDate,
+      afipQrUrl,
+      client_doc_type || 99,
+      client_doc_number || null,
+      client_name || null,
+      notes || null
+    ]);
+
+    const orderId = insertOrderResult.insertId;
+
+    // F. Insertar ítems y descontar stock condicionalmente según regla de negocio
+    for (const item of items) {
+      const qty = parseFloat(item.quantity) || 1;
+      const unitPrice = parseFloat(item.unit_price) || 0;
+      const sub = parseFloat(item.subtotal) || (qty * unitPrice);
+      const iva = parseFloat(item.iva_rate) || 10.5;
+
+      await db.query(`
+        INSERT INTO pos_order_items (
+          order_id, product_id, code, description, quantity, unit_measure, unit_price, iva_rate, subtotal
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        orderId,
+        item.product_id ? parseInt(item.product_id) : null,
+        item.code || null,
+        item.description || item.name || 'Producto',
+        qty,
+        item.unit_measure || 'unidad',
+        unitPrice,
+        iva,
+        sub
+      ]);
+
+      // REGLA DE STOCK CRÍTICA:
+      // Si el ítem tiene product_id y su regla es auto_deduct_stock === 1, registrar egreso en stock_movements.
+      // Si es auto_deduct_stock === 0 (Grupo A: Facturas, medialunas, bizcochos, baguettes, pastelitos, cookies seco, scon), NO descontar!
+      if (item.product_id) {
+        let deduct = item.auto_deduct_stock;
+        if (deduct === undefined || deduct === null) {
+          const prodCheck = await db.query('SELECT auto_deduct_stock FROM products WHERE id = ?', [item.product_id]);
+          if (prodCheck.length > 0) {
+            deduct = prodCheck[0].auto_deduct_stock;
+          }
+        }
+
+        if (deduct === 1 || deduct === true || deduct === '1') {
+          await db.query(
+            'INSERT INTO stock_movements (product_id, quantity, type, shift, date) VALUES (?, ?, ?, ?, ?)',
+            [item.product_id, -Math.abs(qty), 'venta', null, orderDate]
+          );
+        }
+      }
+    }
+
+    // G. Guardar desglose de pagos
+    if (payment_method === 'Pago Multi' && Array.isArray(payments) && payments.length > 0) {
+      for (const p of payments) {
+        if (parseFloat(p.amount) > 0) {
+          await db.query(
+            'INSERT INTO pos_order_payments (order_id, payment_method, amount) VALUES (?, ?, ?)',
+            [orderId, p.payment_method || 'Efectivo', parseFloat(p.amount)]
+          );
+        }
+      }
+    } else {
+      await db.query(
+        'INSERT INTO pos_order_payments (order_id, payment_method, amount) VALUES (?, ?, ?)',
+        [orderId, payment_method || 'Efectivo', parseFloat(totalAmount.toFixed(2))]
+      );
+    }
+
+    // H. Integración con Caja Diaria (daily_registers & daily_transactions)
+    // 1. Asegurar registro diario de caja
+    const regCheck = await db.query('SELECT * FROM daily_registers WHERE date = ?', [orderDate]);
+    if (regCheck.length === 0) {
+      await db.query(
+        'INSERT INTO daily_registers (user_id, date, initial_cash, status) VALUES (?, ?, 0, ?)',
+        [req.user.id, orderDate, 'open']
+      );
+    }
+
+    // 2. Mapeo de medios de pago para la caja diaria
+    const mapMethod = (m) => {
+      const clean = (m || '').toLowerCase();
+      if (clean.includes('efectivo')) return 'Efectivo';
+      if (clean.includes('débito') || clean.includes('debito') || clean.includes('crédito') || clean.includes('credito')) return 'Payway';
+      if (clean.includes('billetera') || clean.includes('mercado') || clean.includes('mp') || clean.includes('virtual')) return 'Mercado Pago';
+      if (clean.includes('transferencia')) return 'Transferencia';
+      return 'Efectivo';
+    };
+
+    const descBase = `Venta POS #${orderNumber} ${table_id ? '(Mesa ' + table_id + ')' : '(Mostrador)'} ${is_invoiced ? '[Fact. ' + ptoVenta + '-' + invNumber + ']' : '[Ticket]'}`;
+
+    if (payment_method === 'Pago Multi' && Array.isArray(payments) && payments.length > 0) {
+      for (const p of payments) {
+        const amt = parseFloat(p.amount);
+        if (amt > 0) {
+          await db.query(`
+            INSERT INTO daily_transactions (type, amount, payment_method, description, date)
+            VALUES ('income', ?, ?, ?, ?)
+          `, [
+            amt,
+            mapMethod(p.payment_method),
+            `${descBase} (Pago parcial ${p.payment_method})`,
+            orderDate
+          ]);
+        }
+      }
+    } else {
+      await db.query(`
+        INSERT INTO daily_transactions (type, amount, payment_method, description, date)
+        VALUES ('income', ?, ?, ?, ?)
+      `, [
+        parseFloat(totalAmount.toFixed(2)),
+        mapMethod(payment_method),
+        descBase,
+        orderDate
+      ]);
+    }
+
+    // I. Si la orden provenía de una Mesa, liberar la mesa
+    if (table_id) {
+      await db.query(
+        "UPDATE pos_tables SET status = 'closed', current_order_id = NULL, opened_at = NULL WHERE id = ?",
+        [table_id]
+      );
+    }
+
+    res.status(201).json({
+      success: true,
+      message: is_invoiced ? 'Venta facturada e impresa con éxito' : 'Comanda registrada con éxito',
+      order: {
+        id: orderId,
+        order_number: orderNumber,
+        date: orderDate,
+        time: orderTime,
+        neto_amount: totalNeto,
+        iva_105_amount: totalIva105,
+        iva_21_amount: totalIva21,
+        total_amount: totalAmount,
+        payment_method,
+        cash_received,
+        cash_change,
+        is_invoiced: !!is_invoiced,
+        pto_venta: ptoVenta,
+        invoice_number: invNumber,
+        cae: caeNumber,
+        cae_due_date: caeDueDate,
+        afip_qr_url: afipQrUrl,
+        client_name: client_name || 'Consumidor Final',
+        client_doc_type: client_doc_type || 99,
+        client_doc_number: client_doc_number || ''
+      },
+      items,
+      config
+    });
+
+  } catch (err) {
+    console.error('Error en POS checkout:', err);
+    res.status(500).json({ error: 'Error al procesar la venta: ' + err.message });
   }
 });
 
