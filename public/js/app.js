@@ -209,14 +209,28 @@ function initEventListeners() {
         }
     });
 
-    // Mostrar/ocultar selector de empleado en Caja Diaria cuando es un egreso
+    // Mostrar/ocultar selector de empleado y métodos de pago en Caja Diaria cuando es un egreso
     document.getElementById('dr-type').addEventListener('change', (e) => {
         const empGroup = document.getElementById('dr-employee-group');
+        const drMethodSelect = document.getElementById('dr-payment-method');
         if (e.target.value === 'expense') {
             empGroup.classList.remove('hide');
+            if (drMethodSelect && !drMethodSelect.querySelector('option[value="Caja de Seguridad"]')) {
+                const opt = document.createElement('option');
+                opt.value = 'Caja de Seguridad';
+                opt.textContent = 'Caja de Seguridad';
+                drMethodSelect.appendChild(opt);
+            }
         } else {
             empGroup.classList.add('hide');
             document.getElementById('dr-employee').value = '';
+            if (drMethodSelect) {
+                const safeOpt = drMethodSelect.querySelector('option[value="Caja de Seguridad"]');
+                if (safeOpt) {
+                    if (drMethodSelect.value === 'Caja de Seguridad') drMethodSelect.value = '';
+                    safeOpt.remove();
+                }
+            }
         }
     });
 
@@ -873,7 +887,16 @@ function openModal(type) {
     document.getElementById('tx-amount').value = '';
     document.getElementById('tx-description').value = '';
     const paymentMethodEl = document.getElementById('tx-payment-method');
-    if (paymentMethodEl) paymentMethodEl.value = 'Efectivo';
+    if (paymentMethodEl) {
+        paymentMethodEl.innerHTML = `
+            <option value="Efectivo" selected>Efectivo</option>
+            <option value="Mercado Pago">Mercado Pago</option>
+            <option value="Payway">Payway</option>
+            <option value="Cupones">Cupones</option>
+            ${type === 'expense' ? '<option value="Caja de Seguridad">Caja de Seguridad</option>' : ''}
+        `;
+        paymentMethodEl.value = 'Efectivo';
+    }
 
     modal.classList.remove('hide');
 }
@@ -2599,6 +2622,12 @@ async function handleSaveDailyTransaction(e) {
         await safeResponseJSON(response, 'Error al guardar el movimiento diario');
         
         document.getElementById('daily-register-form').reset();
+        const drMethodSelect = document.getElementById('dr-payment-method');
+        if (drMethodSelect) {
+            const safeOpt = drMethodSelect.querySelector('option[value="Caja de Seguridad"]');
+            if (safeOpt) safeOpt.remove();
+        }
+        document.getElementById('dr-employee-group').classList.add('hide');
         loadDailyTransactions();
         Alert.success('Movimiento registrado correctamente.');
     } catch (err) {
@@ -2645,6 +2674,7 @@ async function handleEditDailyTransaction(id) {
                 <option value="Mercado Pago" ${tx.payment_method === 'Mercado Pago' ? 'selected' : ''}>Mercado Pago</option>
                 <option value="Payway" ${tx.payment_method === 'Payway' ? 'selected' : ''}>Payway</option>
                 <option value="Cupones" ${tx.payment_method === 'Cupones' ? 'selected' : ''}>Cupones</option>
+                <option value="Caja de Seguridad" ${tx.payment_method === 'Caja de Seguridad' ? 'selected' : ''}>Caja de Seguridad</option>
             </select>
         </td>
         <td><input type="text" id="edit-dr-desc-${id}" value="${tx.description || ''}" style="padding: 4px; width: 100%; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color);"></td>
